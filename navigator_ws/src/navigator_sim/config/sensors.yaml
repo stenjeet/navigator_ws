@@ -1,0 +1,16 @@
+sensor_models:
+  ros__parameters:
+    random_seed: 12025
+    # UWB (report section 4.2, table 4.1)
+    uwb_sigma: 0.05
+    uwb_dropout_probability: 0.03
+    uwb_biases: [0.02, -0.03, 0.04, 0.01]   # per-anchor bias A1..A4 [m]
+    uwb_rate_hz: 10.0
+    # Lidar (report section 4.3, table 4.2)
+    lidar_sigma: 0.02
+    lidar_bias: 0.01
+    lidar_dropout_probability: 0.01
+    lidar_range_min: 0.12
+    lidar_range_max: 8.0
+    lidar_beams: 360
+    lidar_rate_hz: 10.0

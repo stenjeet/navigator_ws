@@ -1,0 +1,19 @@
+# ROS 2 / colcon build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Scratch and local files
+.tmp/
+AGENTS.md
+
+# Rendered data cache
+results/plot_data.npz
+
+# OS / editor
+.DS_Store
+.vscode/

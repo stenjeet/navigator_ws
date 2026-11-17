@@ -1,0 +1,12 @@
+motion_node:
+  ros__parameters:
+    start_x: 1.5
+    start_y: 1.5
+    start_yaw: 0.0
+    side_length: 4.0
+    linear_velocity: 0.35
+    angular_velocity: 0.60
+    time_step: 0.05
+    wheel_radius: 0.09
+    wheel_base: 0.42
+    loops: 1
