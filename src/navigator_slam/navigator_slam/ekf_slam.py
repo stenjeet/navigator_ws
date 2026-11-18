@@ -36,7 +36,10 @@ Models
 * Initialisation - inverse observation model from the current robot pose; the
   new landmark block and its cross-covariances to the *whole* state are filled
   from the robot Jacobian, so later observations of other landmarks still carry
-  the correct correlations.
+  the correct correlations. A candidate enters the state only after
+  ``min_landmark_hits`` consistent sightings (see ``tentative.py``): a wall
+  corner fitted as a small circle is seen a handful of times, a real landmark
+  hundreds of times.
 
 Measurement noise
 -----------------
@@ -489,6 +492,13 @@ class EKFSLAM:
         landmark overconfident even when the detector reports a tiny variance.
         Returns the new id, or ``None`` when the observation is invalid or the
         state already holds ``max_landmarks`` landmarks.
+
+        When ``position`` comes from the confirmation buffer (an average of
+        several sightings), the Jacobians ``G``/``M`` and the cross-covariance
+        are still evaluated for the current observation. This is deliberate: the
+        averaged position moves by centimetres and the resulting covariance is
+        slightly conservative, which the ``initial_landmark_std`` floor already
+        dominates.
         """
         if not observation.is_finite():
             return None

@@ -186,7 +186,7 @@ def observe(pose, rng, sigma_range=0.02, sigma_bearing=0.02, max_range=4.0,
 
 def run_slam(loops=2, use_uwb=True, seed=SEED, control_noise=0.0,
              observation_noise=(0.02, 0.02), false_negative=0.0, outage=None,
-             update_every=2, max_range=4.0, ekf_kwargs=None):
+             update_every=2, max_range=4.0, clutter=0.0, ekf_kwargs=None):
     """Replay the trajectory through the filter and collect diagnostics."""
     rng = np.random.default_rng(seed)
     states, controls = simulate_trajectory(
@@ -211,11 +211,16 @@ def run_slam(loops=2, use_uwb=True, seed=SEED, control_noise=0.0,
             max_range=max_range,
             false_negative=false_negative,
         )
-        associations = slam.associate(observations)
-        slam.update_landmarks(observations, associations)
-        for observation, association in zip(observations, associations):
-            if association is None:
-                slam.add_landmark(observation)
+        # Sporadic clutter at random positions, like the false positives of the
+        # real detector on wall corners; it must never become a landmark.
+        if clutter > 0.0 and rng.random() < clutter:
+            observations.append(Observation(
+                range=float(rng.uniform(0.5, max_range)),
+                bearing=float(rng.uniform(-math.pi, math.pi)),
+                radius=0.09,
+            ))
+
+        associations, _added = slam.process_observations(observations)
 
         lap = min(step // steps_per_lap, int(loops) - 1)
         lap_ids[lap].update(a for a in associations if a is not None)
@@ -720,6 +725,25 @@ class TestLoopClosure(unittest.TestCase):
         )
         self.assertTrue(np.all(np.isfinite(slam.mu)))
         assert_symmetric_psd(self, slam.Sigma, 'slam')
+
+    def test_sporadic_clutter_never_becomes_a_landmark(self):
+        result = run_slam(loops=2, clutter=0.05, seed=SEED + 5)
+        slam = result['slam']
+        states = result['states']
+
+        self.assertEqual(slam.landmark_count, len(LANDMARKS))
+        for estimate in slam.landmarks():
+            nearest = min(
+                math.hypot(estimate.x - lx, estimate.y - ly)
+                for lx, ly in LANDMARKS
+            )
+            self.assertLess(nearest, 0.15)
+        self.assertLess(
+            math.hypot(
+                slam.mu[0] - states[-1][0], slam.mu[1] - states[-1][1]
+            ),
+            0.20,
+        )
 
     def test_covariance_shrinks_with_observations(self):
         result = run_slam(loops=1)

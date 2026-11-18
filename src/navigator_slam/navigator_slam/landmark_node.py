@@ -6,10 +6,11 @@ Wraps the pure detector/associator in ``navigator_slam.landmark_detection``:
 * every scan is turned into pose-free observations in ``base_footprint`` and
   published on ``/landmarks/observations``;
 * when a pose is available (``pose_topic``, ``/estimate/odom`` by default) the
-  observations are associated with the tracked map, new ids are created on
-  first sight and the position of known ids is updated with an exponential
-  moving average; the map is published periodically on ``/landmarks/map`` and
-  drawn on ``/landmarks/markers``;
+  observations are associated with the tracked map, a candidate gets a new id
+  only after ``min_hits`` consistent sightings (a single scan occasionally fits
+  a small circle onto a wall corner) and the position of known ids is updated
+  with an exponential moving average; the map is published periodically on
+  ``/landmarks/map`` and drawn on ``/landmarks/markers``;
 * an empty ``pose_topic`` disables map tracking, association and markers, so
   the node can feed the joint EKF-SLAM (stage 8) with raw observations only.
 
@@ -285,10 +286,12 @@ class LandmarkNode(Node):
         for observation, landmark_id in zip(observations, associations):
             map_x, map_y, covariance = self.observation_to_map(observation)
             if landmark_id is None:
+                if len(self.landmarks) >= self.max_landmarks:
+                    # The map is full: freeze the candidates as well, like the
+                    # joint EKF-SLAM does.
+                    continue
                 confirmed, map_x, map_y = self.tentative.update(map_x, map_y)
                 if not confirmed:
-                    continue
-                if len(self.landmarks) >= self.max_landmarks:
                     continue
                 landmark_id = self.next_id
                 self.next_id += 1

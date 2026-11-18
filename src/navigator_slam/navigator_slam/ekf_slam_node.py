@@ -205,7 +205,7 @@ class EkfSlamNode(Node):
         self.observation_count = 0
         self.matched_count = 0
         self.added_count = 0
-        self.dropped_count = 0
+        self.candidate_count = 0
         self.cap_warned = False
 
         self.create_subscription(
@@ -316,26 +316,30 @@ class EkfSlamNode(Node):
 
         self.observation_count += len(observations)
         associations, added = self.slam.process_observations(observations)
-        self.matched_count += sum(
+        matched = sum(
             1 for association in associations if association is not None
         )
+        self.matched_count += matched
         self.added_count += len(added)
+        # Everything else went to the confirmation buffer (a candidate that
+        # never reaches min_landmark_hits dies there).
+        self.candidate_count += len(observations) - matched - len(added)
         for new_id in added:
             self.get_logger().debug(
                 'new landmark %d confirmed (map: %d landmarks, %d candidates)'
                 % (new_id, self.slam.landmark_count, len(self.slam.tentative))
             )
-        if self.slam.landmark_count >= self.slam.max_landmarks:
-            # The state is full: candidates are dropped until a slot frees up.
-            self.dropped_count += len(observations) - sum(
-                1 for association in associations if association is not None
-            ) - len(added)
-            if not self.cap_warned:
-                self.cap_warned = True
-                self.get_logger().warn(
-                    'landmark cap reached (%d): new landmarks are ignored'
-                    % self.slam.max_landmarks
-                )
+        if (
+            self.slam.landmark_count >= self.slam.max_landmarks
+            and not self.cap_warned
+        ):
+            # No landmark is ever removed, so the map stays at the cap and new
+            # candidates can no longer be confirmed.
+            self.cap_warned = True
+            self.get_logger().warn(
+                'landmark cap reached (%d): new landmarks are ignored'
+                % self.slam.max_landmarks
+            )
 
     # ------------------------------------------------------------------
     # Prediction and publishing
@@ -483,14 +487,14 @@ class EkfSlamNode(Node):
             rmse = [math.sqrt(s / n) for s in self.sum_sq]
             self.get_logger().info(
                 'slam RMSE x=%.3f m y=%.3f m yaw=%.4f rad (samples=%d), '
-                '%d landmarks (%d matched, %d new, %d dropped of %d '
+                '%d landmarks (%d matched, %d new, %d candidates of %d '
                 'observations)'
                 % (
                     rmse[0], rmse[1], rmse[2], n,
                     self.slam.landmark_count,
                     self.matched_count,
                     self.added_count,
-                    self.dropped_count,
+                    self.candidate_count,
                     self.observation_count,
                 )
             )
