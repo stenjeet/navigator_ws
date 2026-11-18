@@ -2,7 +2,7 @@
 
 Рабочее пространство ROS 2 проекта **navigator**: модель робота, карта полигона,
 истинная квадратная траектория, модели СШП-дальностей и лидарных сканов,
-EKF-локализация по СШП и сетка занятости по лидару.
+EKF-локализация по СШП, сетка занятости, выделение ориентиров и EKF-SLAM.
 
 Целевая среда — **Windows + WSL 2, Ubuntu 24.04, ROS 2 Jazzy**.
 Пошаговая установка с нуля: [`WSL_SETUP.md`](WSL_SETUP.md). Код использует только `rclpy`,
@@ -30,10 +30,13 @@ navigator_ws/
 ├── run_visualize.sh              # headless-прогон + рендер PNG в results/
 ├── run_localization_metrics.sh   # headless-прогон EKF + графики ошибок
 ├── run_map_compare.sh            # headless-прогон двух карт + сравнение
+├── run_analysis.sh               # сценарный анализ точности (этап 9)
+├── docs/stages7-9-contract.md    # контракт топиков/сообщений этапов 7-9
 ├── results/                      # готовые рисунки для отчёта
 ├── tools/visualize.py            # сбор данных из топиков и отрисовка
 ├── tools/localization_metrics.py # RMSE и графики ошибок локализации
 ├── tools/map_compare.py          # сравнение карт (истина vs оценка)
+├── tools/analysis.py             # сценарии: RMSE, карты, таблицы, графики
 └── src/
     ├── navigator_description/    # только описание робота
     │   ├── CMakeLists.txt, package.xml
@@ -51,7 +54,11 @@ navigator_ws/
     ├── navigator_bringup/        # launch-файлы
     │   ├── CMakeLists.txt, package.xml
     │   └── launch/{simulation.launch.py, display.launch.py, localization.launch.py,
-    │                mapping.launch.py}
+    │                mapping.launch.py, landmarks.launch.py, slam.launch.py}
+    ├── navigator_interfaces/     # сообщения ориентиров (этапы 7-8)
+    │   ├── CMakeLists.txt, package.xml
+    │   └── msg/{LandmarkObservation, LandmarkObservationArray,
+    │            Landmark, LandmarkMap}.msg
     ├── navigator_localization/   # этап 5: EKF-локализация по СШП
     │   ├── package.xml, setup.py, setup.cfg, resource/
     │   ├── config/ekf.yaml
@@ -59,19 +66,24 @@ navigator_ws/
     │   └── navigator_localization/
     │       ├── ekf.py            # чистый EKF (predict/update)
     │       └── ekf_node.py       # ROS-обёртка
-    └── navigator_slam/           # этап 6: сетка занятости
+    └── navigator_slam/           # этапы 6-8: карта, ориентиры, EKF-SLAM
         ├── package.xml, setup.py, setup.cfg, resource/
-        ├── config/occupancy.yaml
-        ├── test/{test_occupancy_grid.py, test_config.py}
+        ├── config/{occupancy.yaml, landmarks.yaml, ekf_slam.yaml}
+        ├── test/{test_occupancy_grid.py, test_config.py,
+        │         test_landmark_detection.py, test_ekf_slam.py, test_analysis.py}
         └── navigator_slam/
-            ├── occupancy_grid.py     # чистая сетка лог-оддсов
-            └── occupancy_grid_node.py # ROS-обёртка
+            ├── occupancy_grid.py          # сетка лог-оддсов (этап 6)
+            ├── occupancy_grid_node.py     # ROS-обёртка
+            ├── landmark_detection.py      # ориентиры и ассоциация (этап 7)
+            ├── landmark_node.py           # ROS-обёртка
+            ├── ekf_slam.py                # совместный EKF поза+карта (этап 8)
+            └── ekf_slam_node.py           # ROS-обёртка
 ```
 
 Разделение по ролям: `_description` можно переиспользовать с реальным роботом,
 `_sim` заменяется на драйверы датчиков, `_bringup` — единственное место, где пакеты
-собираются вместе. Этап 5 реализован в `navigator_localization`, этап 6 — в
-`navigator_slam` (там же будут ориентиры и EKF-SLAM, этапы 7–8).
+собираются вместе. Этап 5 реализован в `navigator_localization`, этапы 6–8 — в
+`navigator_slam`, сообщения ориентиров — в `navigator_interfaces`.
 
 ## Требования
 
@@ -86,8 +98,9 @@ source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 ```
 
-Ожидаемо: `Summary: 5 packages finished` (`navigator_description`, `navigator_sim`,
-`navigator_bringup`, `navigator_localization`, `navigator_slam`).
+Ожидаемо: `Summary: 6 packages finished` (`navigator_description`, `navigator_sim`,
+`navigator_bringup`, `navigator_localization`, `navigator_slam`,
+`navigator_interfaces`).
 
 ## Скрипты
 
@@ -100,6 +113,8 @@ colcon build --symlink-install
 | `python3 tools/localization_metrics.py --replot` | Перерисовывает метрики из `results/localization_data.npz`. |
 | `./run_map_compare.sh [секунды]` | headless-прогон с двумя картографами (истинная поза и оценка EKF), сравнение карт, PNG, расстояние и IoU в `results/`. |
 | `python3 tools/map_compare.py --replot` | Перерисовывает сравнение карт из `results/map_compare_data.npz`. |
+| `./run_analysis.sh [секунды] [--quick]` | Этап 9: последовательно прогоняет сценарии (σ СШП, пропуски, окно без СШП, раскладки якорей), пишет таблицу и графики в `results/`. |
+| `python3 tools/analysis.py --replot` | Перерисовывает таблицу и графики этапа 9 из `results/analysis/analysis_data.npz`. |
 
 Все shell-скрипты берут дистрибутив ROS из `/opt/ros/jazzy/setup.bash`; другой путь можно
 задать переменной, например `ROS_SETUP=/opt/ros/humble/setup.bash ./run.sh`.
@@ -129,11 +144,18 @@ ros2 launch navigator_bringup mapping.launch.py
 # карта по истинной позе / обе карты сразу (для сравнения)
 ros2 launch navigator_bringup mapping.launch.py pose_source:=ground_truth
 ros2 launch navigator_bringup mapping.launch.py pose_source:=both
+
+# этап 7: выделение ориентиров и ассоциация (поза — EKF)
+ros2 launch navigator_bringup landmarks.launch.py
+# этап 8: EKF-SLAM (совместная оценка позы и карты ориентиров)
+ros2 launch navigator_bringup slam.launch.py
 ```
 
 У всех launch-файлов есть аргумент `use_rviz` (по умолчанию `true`);
-`simulation.launch.py` дополнительно принимает `use_localization`, а
-`mapping.launch.py` — `pose_source` (`estimate` по умолчанию, `ground_truth`, `both`).
+`simulation.launch.py` принимает `use_localization`, `sensors_params` и
+`ekf_params` (сценарные YAML этапа 9), `mapping.launch.py` — `pose_source`
+(`estimate` по умолчанию, `ground_truth`, `both`) и пробрасывает
+`sensors_params`/`ekf_params`.
 
 ## Узлы и топики
 
@@ -148,6 +170,8 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 | `ekf_node` (`navigator_localization`) | `/estimate/odom`, `/estimate/path`, `/estimate/error` |
 | `occupancy_grid_ekf` (`navigator_slam`) | `/map/estimate` (сетка по оценённой позе) |
 | `occupancy_grid_gt` (`navigator_slam`) | `/map/ground_truth` (сетка по истинной позе) |
+| `landmark_node` (`navigator_slam`) | `/landmarks/observations`, `/landmarks/map`, `/landmarks/markers` |
+| `ekf_slam_node` (`navigator_slam`) | `/slam/odom`, `/slam/path`, `/slam/landmarks`, `/slam/markers`, `/slam/error` |
 
 | Топик | Тип | Назначение |
 |-------|-----|-----------|
@@ -167,6 +191,14 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 | `/estimate/error` | geometry_msgs/Vector3Stamped | ошибка оценки vs истина (`x`, `y`, `yaw`) |
 | `/map/estimate` | nav_msgs/OccupancyGrid | сетка занятости по оценке EKF (этап 6) |
 | `/map/ground_truth` | nav_msgs/OccupancyGrid | сетка занятости по истинной позе (этап 6) |
+| `/landmarks/observations` | navigator_interfaces/LandmarkObservationArray | ориентиры в системе робота (этап 7) |
+| `/landmarks/map` | navigator_interfaces/LandmarkMap | карта ориентиров трекера (этап 7) |
+| `/landmarks/markers` | visualization_msgs/MarkerArray | визуализация ориентиров трекера |
+| `/slam/odom` | nav_msgs/Odometry | поза из EKF-SLAM (frame `map`) |
+| `/slam/path` | nav_msgs/Path | траектория EKF-SLAM |
+| `/slam/landmarks` | navigator_interfaces/LandmarkMap | ориентиры из совместного фильтра (этап 8) |
+| `/slam/markers` | visualization_msgs/MarkerArray | визуализация ориентиров SLAM |
+| `/slam/error` | geometry_msgs/Vector3Stamped | ошибка SLAM vs истина (`x`, `y`, `yaw`) |
 
 ## Проверка
 
@@ -176,8 +208,8 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
-ros2 pkg list | grep navigator             # 5 пакетов
-ros2 node list                             # 6 узлов без RViz (7 с RViz, 9 с картами)
+ros2 pkg list | grep navigator             # 6 пакетов
+ros2 node list                             # 6 узлов без RViz (7 с EKF, 9 с картами, 10 со SLAM)
 ros2 topic list                            # все топики из таблицы выше
 ros2 topic hz /scan_ideal                  # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges            # ~10 Гц
@@ -188,6 +220,11 @@ ros2 topic hz /estimate/odom               # ~20 Гц (этап 5, если вк
 ros2 topic echo --once /estimate/error     # ошибка оценки (этап 5)
 ros2 topic hz /map/estimate                # ~1 Гц (этап 6, если запущен маппер)
 ros2 topic echo --once /map/estimate       # OccupancyGrid: -1/0/100
+ros2 topic hz /landmarks/observations      # ~10 Гц (этап 7, если запущен landmark_node)
+ros2 topic echo --once /landmarks/map      # ориентиры с id и ковариацией
+ros2 topic hz /slam/odom                   # ~20 Гц (этап 8)
+ros2 topic echo --once /slam/landmarks     # карта ориентиров из EKF-SLAM
+ros2 topic echo --once /slam/error         # ошибка SLAM vs истина
 ```
 
 Ожидаемо: TF `map → base_footprint` движется по квадрату 4 × 4 м со скоростью 0.35 м/с,
@@ -298,6 +335,105 @@ IoU по занятым ячейкам чувствителен к сдвигу:
 симуляции; на реальном роботе такой эталон появляется лишь после EKF-SLAM
 (этап 8).
 
+## Этап 7 — Выделение и сопоставление ориентиров
+
+`navigator_slam/landmark_detection.py` извлекает ориентиры из скана и
+сопоставляет их с ранее наблюдавшимися:
+
+- **сегментация** — разрывы по скачку дальности с адаптивным порогом
+  (`max(jump_threshold, 3σ) + |Δθ|·r`), короткие разрывы `inf`/`NaN`
+  сшиваются, полный круг скана замыкается циклически;
+- **геометрия** — кластер принимается, если в нём `min_points..max_points`
+  лучей, ширина ≤ `max_cluster_width` (0.20 м), а круг радиуса 0.04–0.25 м
+  описывает дугу с residual ≤ `max_residual`; иначе используется центр по хорде
+  и стрелке (`fit_arc`), поэтому ориентир не отбрасывается;
+- **наблюдение** (`navigator_interfaces/LandmarkObservationArray`) — в системе
+  `base_footprint`: `range` и `bearing` от центра робота (смещение лидара
+  скомпенсировано), `radius` и собственные дисперсии детектора;
+- **ассоциация** — махаланобисово расстояние с гейтом `gate = 9.21`
+  (χ², 2 степени свободы, 99 %), каждый id используется не более одного раза
+  за скан, несопоставленные наблюдения получают новый id.
+
+Узел `landmark_node` публикует `/landmarks/observations` на каждый скан, а при
+наличии позы (`pose_topic`) — карту `/landmarks/map` (экспоненциальное
+сглаживание `map_alpha`) и маркеры `/landmarks/markers`. Пустой `pose_topic`
+отключает карту и маркеры — так `landmark_node` работает внутри EKF-SLAM.
+
+Проверка детектора (офлайн, 720 синтетических сканов по геометрии полигона):
+средняя ошибка положения относительно `world.LANDMARKS` 3 мм без шума,
+1.7 % ложных срабатываний с шумом лидара (σ = 0.02 м, bias = 0.01 м,
+1 % пропусков), 0.4 мс на скан.
+
+```bash
+ros2 launch navigator_bringup landmarks.launch.py use_rviz:=false
+ros2 topic hz /landmarks/observations
+ros2 topic echo --once /landmarks/map
+```
+
+## Этап 8 — EKF-SLAM
+
+`navigator_slam/ekf_slam.py` оценивает **совместно** позу и координаты
+ориентиров:
+
+```
+mu    = [x, y, θ, m1x, m1y, ..., mNx, mNy]
+Sigma = cov(mu)                      # (2N+3) x (2N+3)
+```
+
+- **прогноз** — дифференциальная модель по `/cmd_vel`, полный якобиан процесса
+  (кросс-корреляции с ориентирами сохраняются);
+- **коррекция по СШП** — та же модель дальности, что на этапе 5 (смещение
+  метки, 3D-дистанция до якорей, `NaN` = пропуск);
+- **коррекция по ориентирам** — модель «дальность/азимут от центра робота»,
+  аналитические якобианы по блоку робота и по связанному ориентиру,
+  форма Джозефа;
+- **инициализация ориентира** — обратная модель наблюдения, ковариация через
+  `G·Σ·Gᵀ + M·R·Mᵀ`, диагональ не ниже `initial_landmark_std²`;
+- **ассоциация** — по **совместной** ковариации (блоки робота и ориентира
+  вместе с кросс-корреляциями), гейт χ² 99 %.
+
+Выходы: `/slam/odom`, `/slam/path`, `/slam/landmarks`, `/slam/markers`,
+`/slam/error`; TF не публикуется (истинная поза по-прежнему владеет
+`odom → base_footprint`).
+
+Проверка замыкания (unit-тест, два круга по полигону, шум 2 см / 0.02 рад):
+ошибка позы в конце **3.4 см**, курса 0.004 рад, средняя ошибка ориентиров
+**3.4 мм**, число ориентиров равно числу настоящих (4) — повторное наблюдение
+после замкнутой траектории не создаёт дубликатов.
+
+```bash
+ros2 launch navigator_bringup slam.launch.py use_rviz:=false
+ros2 topic hz /slam/odom
+ros2 topic echo --once /slam/landmarks
+```
+
+## Этап 9 — Анализ эффективности
+
+`tools/analysis.py` последовательно прогоняет сценарии, варьируя параметры через
+сгенерированные YAML (`sensors_params`/`ekf_params`), и агрегирует метрики:
+
+| Сценарий | Что меняется |
+|---|---|
+| `baseline` | номинальные `sensors.yaml` и `ekf.yaml` |
+| `uwb_sigma_0.02/0.10/0.20` | σ СШП в модели **и** в фильтре |
+| `uwb_mismatch_r_low` | модель 0.10 м, фильтр 0.05 м (оптимистичный R) |
+| `dropout_0.10/0.25` | вероятность пропуска СШП |
+| `outage_20_40` | все дальности `NaN` с 20-й по 40-ю секунду |
+| `anchors_wide` / `anchors_compact` | углы полигона / якоря у старта |
+
+Метрики: RMSE и максимум ошибки позы (`/estimate/error`), RMSE SLAM
+(`/slam/error`, если запущен), IoU занятых ячеек и среднее расстояние между
+картами `/map/estimate` и `/map/ground_truth`. Результаты:
+`results/analysis/summary.md` (таблица + автоматические выводы),
+`results/analysis/summary.csv`, `results/analysis_rmse.png`,
+`results/analysis_maps.png`.
+
+```bash
+./run_analysis.sh --quick      # baseline + σ 0.10 + dropout 0.25, по 30 с (~3 мин)
+./run_analysis.sh              # полная таблица, по 62 с (~13 мин)
+python3 tools/analysis.py --replot   # таблица и графики без запуска симуляции
+```
+
 ## Остановка
 
 `Ctrl+C` в терминале запуска. Если после аварийного прерывания остались процессы:
@@ -322,6 +458,16 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
 - `navigator_slam/config/occupancy.yaml` — разрешение 0.05 м, границы сетки,
   `p_occupied`/`p_free`, клип лог-оддсов, пороги публикации, смещение лидара,
   `max_range`, допуск по позе, частота публикации (этап 6).
+- `navigator_slam/config/landmarks.yaml` — пороги кластеризации (`jump_threshold`,
+  `min/max_points`, `max_cluster_width`), допустимый радиус и residual,
+  `sigma_range`/`sigma_bearing`, гейт ассоциации, `map_alpha`, `max_landmarks`
+  (этап 7).
+- `navigator_slam/config/ekf_slam.yaml` — начальная поза и σ, `Q`, σ СШП и якоря,
+  `use_uwb`, `gate`, `sigma_range`/`sigma_bearing`, `initial_landmark_std`,
+  `max_landmarks`, частоты публикации (этап 8).
+- `navigator_sim/config/sensors.yaml` — одна секция на ноду (`uwb_model_node`,
+  `lidar_model_node`) и параметры сценариев этапа 9: `anchors` (пусто = якоря
+  полигона) и окно без СШП `outage_start_s`/`outage_end_s`.
 
 ## Рисунки для отчёта
 
@@ -337,6 +483,9 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
 | `results/result_uwb.png` | дальности A1–A4: идеал vs шум + смещение + пропуски |
 | `results/result_localization_*.png` | локализация EKF: траектория и ошибки (этап 5) |
 | `results/result_map_compare.png` | сетка занятости по истинной и оценённой позе + различия (этап 6) |
+| `results/analysis_rmse.png` | RMSE локализации по сценариям этапа 9 |
+| `results/analysis_maps.png` | IoU и расстояние между картами по сценариям этапа 9 |
+| `results/analysis/summary.md` | таблица метрик и автоматические выводы этапа 9 |
 
 Сырые данные прогона сохраняются в `results/plot_data.npz`. Повторная отрисовка без
 запуска симуляции:
@@ -350,9 +499,11 @@ python3 tools/visualize.py --replot
 
 `navigator_description/config/navigator.rviz` задаёт вид сверху: модель робота, TF,
 истинную траекторию и оценку EKF (`/estimate/odom`, `/estimate/path`), маркеры
-полигона, два лидарных скана (`/scan_ideal`, `/scan_noisy`) и карты сетки
+полигона, два лидарных скана (`/scan_ideal`, `/scan_noisy`), карты сетки
 занятости (`/map/estimate` включён, `/map/ground_truth` выключен по умолчанию),
-Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
+а также выключенные по умолчанию `/slam/path`, `/slam/odom`, `/slam/markers` и
+`/landmarks/markers` — их достаточно включить галочкой при запуске
+`landmarks.launch.py` или `slam.launch.py`. Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
 можно снимать скриншоты через виртуальный дисплей:
 
 ```bash
@@ -373,6 +524,10 @@ import -window root rviz.png
 | `Package 'navigator_bringup' not found` | workspace не собран или не подключён `install/setup.bash` |
 | `/map/estimate` отсутствует | не запущен `mapping.launch.py` (`pose_source:=estimate`/`both`) или ещё нет `/estimate/odom` |
 | `map_compare.py`: «no map on …» | маппер запущен без `pose_source:=both` |
+| `/landmarks/observations` молчит | `landmark_node` не запущен (`landmarks.launch.py`/`slam.launch.py`) или в скане нет ориентиров |
+| `/slam/odom` отсутствует | не запущен `slam.launch.py`; SLAM не использует `/estimate/odom` |
+| `analysis.py`: «no /estimate/error» | EKF не стартовал: сценарий не дождался записи, смотрите `--startup-timeout` |
+| `run_analysis.sh` долго молчит | это нормально: сценарии идут последовательно, статус печатается по мере завершения |
 | RViz не открывается | Windows 10 без X-сервера — используйте `use_rviz:=false` или настройте `DISPLAY` |
 | Сборка идёт очень долго | проект лежит в `/mnt/c` — скопируйте в `~` (см. `WSL_SETUP.md`, раздел 3) |
 
