@@ -1,7 +1,8 @@
 # navigator_ws — симуляция робота «Навигатор-М»
 
 Рабочее пространство ROS 2 проекта **navigator**: модель робота, карта полигона,
-истинная квадратная траектория, модели СШП-дальностей и лидарных сканов.
+истинная квадратная траектория, модели СШП-дальностей и лидарных сканов,
+EKF-локализация по СШП и сетка занятости по лидару.
 
 Целевая среда — **Windows + WSL 2, Ubuntu 24.04, ROS 2 Jazzy**.
 Пошаговая установка с нуля: [`WSL_SETUP.md`](WSL_SETUP.md). Код использует только `rclpy`,
@@ -28,9 +29,11 @@ navigator_ws/
 ├── run.sh                        # сборка + запуск симуляции
 ├── run_visualize.sh              # headless-прогон + рендер PNG в results/
 ├── run_localization_metrics.sh   # headless-прогон EKF + графики ошибок
+├── run_map_compare.sh            # headless-прогон двух карт + сравнение
 ├── results/                      # готовые рисунки для отчёта
 ├── tools/visualize.py            # сбор данных из топиков и отрисовка
 ├── tools/localization_metrics.py # RMSE и графики ошибок локализации
+├── tools/map_compare.py          # сравнение карт (истина vs оценка)
 └── src/
     ├── navigator_description/    # только описание робота
     │   ├── CMakeLists.txt, package.xml
@@ -47,20 +50,28 @@ navigator_ws/
     │       └── lidar_model_node.py       # лидарные сканы
     ├── navigator_bringup/        # launch-файлы
     │   ├── CMakeLists.txt, package.xml
-    │   └── launch/{simulation.launch.py, display.launch.py, localization.launch.py}
-    └── navigator_localization/   # этап 5: EKF-локализация по СШП
+    │   └── launch/{simulation.launch.py, display.launch.py, localization.launch.py,
+    │                mapping.launch.py}
+    ├── navigator_localization/   # этап 5: EKF-локализация по СШП
+    │   ├── package.xml, setup.py, setup.cfg, resource/
+    │   ├── config/ekf.yaml
+    │   ├── test/{test_ekf.py, test_config.py}
+    │   └── navigator_localization/
+    │       ├── ekf.py            # чистый EKF (predict/update)
+    │       └── ekf_node.py       # ROS-обёртка
+    └── navigator_slam/           # этап 6: сетка занятости
         ├── package.xml, setup.py, setup.cfg, resource/
-        ├── config/ekf.yaml
-        ├── test/{test_ekf.py, test_config.py}
-        └── navigator_localization/
-            ├── ekf.py            # чистый EKF (predict/update)
-            └── ekf_node.py       # ROS-обёртка
+        ├── config/occupancy.yaml
+        ├── test/{test_occupancy_grid.py, test_config.py}
+        └── navigator_slam/
+            ├── occupancy_grid.py     # чистая сетка лог-оддсов
+            └── occupancy_grid_node.py # ROS-обёртка
 ```
 
 Разделение по ролям: `_description` можно переиспользовать с реальным роботом,
 `_sim` заменяется на драйверы датчиков, `_bringup` — единственное место, где пакеты
-собираются вместе. Этап 5 реализован в `navigator_localization`; этапы 6–9
-добавляются рядом как `navigator_slam`, `navigator_interfaces`.
+собираются вместе. Этап 5 реализован в `navigator_localization`, этап 6 — в
+`navigator_slam` (там же будут ориентиры и EKF-SLAM, этапы 7–8).
 
 ## Требования
 
@@ -75,8 +86,8 @@ source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 ```
 
-Ожидаемо: `Summary: 4 packages finished` (`navigator_description`, `navigator_sim`,
-`navigator_bringup`, `navigator_localization`).
+Ожидаемо: `Summary: 5 packages finished` (`navigator_description`, `navigator_sim`,
+`navigator_bringup`, `navigator_localization`, `navigator_slam`).
 
 ## Скрипты
 
@@ -87,8 +98,10 @@ colcon build --symlink-install
 | `python3 tools/visualize.py --replot` | Перерисовывает графики из сохранённого `results/plot_data.npz` без запуска симуляции. Дополнительно: `--duration N`, `--out DIR`. |
 | `./run_localization_metrics.sh [секунды]` | headless-прогон с EKF, запись `/ground_truth/odom` и `/estimate/odom` (62 с по умолчанию), PNG и RMSE в `results/`. |
 | `python3 tools/localization_metrics.py --replot` | Перерисовывает метрики из `results/localization_data.npz`. |
+| `./run_map_compare.sh [секунды]` | headless-прогон с двумя картографами (истинная поза и оценка EKF), сравнение карт, PNG, расстояние и IoU в `results/`. |
+| `python3 tools/map_compare.py --replot` | Перерисовывает сравнение карт из `results/map_compare_data.npz`. |
 
-Оба shell-скрипта берут дистрибутив ROS из `/opt/ros/jazzy/setup.bash`; другой путь можно
+Все shell-скрипты берут дистрибутив ROS из `/opt/ros/jazzy/setup.bash`; другой путь можно
 задать переменной, например `ROS_SETUP=/opt/ros/humble/setup.bash ./run.sh`.
 
 ## Запуск вручную
@@ -110,10 +123,17 @@ ros2 launch navigator_bringup display.launch.py use_rviz:=false
 ros2 launch navigator_bringup localization.launch.py
 # эквивалент:
 ros2 launch navigator_bringup simulation.launch.py use_localization:=true
+
+# этап 6: сетка занятости по оценке EKF (EKF стартует автоматически)
+ros2 launch navigator_bringup mapping.launch.py
+# карта по истинной позе / обе карты сразу (для сравнения)
+ros2 launch navigator_bringup mapping.launch.py pose_source:=ground_truth
+ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 ```
 
 У всех launch-файлов есть аргумент `use_rviz` (по умолчанию `true`);
-`simulation.launch.py` дополнительно принимает `use_localization`.
+`simulation.launch.py` дополнительно принимает `use_localization`, а
+`mapping.launch.py` — `pose_source` (`estimate` по умолчанию, `ground_truth`, `both`).
 
 ## Узлы и топики
 
@@ -126,6 +146,8 @@ ros2 launch navigator_bringup simulation.launch.py use_localization:=true
 | `uwb_model_node` (`navigator_sim`) | `/uwb/ideal_ranges`, `/uwb/noisy_ranges`, `/uwb/anchors` |
 | `lidar_model_node` (`navigator_sim`) | `/scan_ideal`, `/scan_noisy` |
 | `ekf_node` (`navigator_localization`) | `/estimate/odom`, `/estimate/path`, `/estimate/error` |
+| `occupancy_grid_ekf` (`navigator_slam`) | `/map/estimate` (сетка по оценённой позе) |
+| `occupancy_grid_gt` (`navigator_slam`) | `/map/ground_truth` (сетка по истинной позе) |
 
 | Топик | Тип | Назначение |
 |-------|-----|-----------|
@@ -143,6 +165,8 @@ ros2 launch navigator_bringup simulation.launch.py use_localization:=true
 | `/estimate/odom` | nav_msgs/Odometry | оценка позы EKF (frame `map`) |
 | `/estimate/path` | nav_msgs/Path | накопленная оценка траектории |
 | `/estimate/error` | geometry_msgs/Vector3Stamped | ошибка оценки vs истина (`x`, `y`, `yaw`) |
+| `/map/estimate` | nav_msgs/OccupancyGrid | сетка занятости по оценке EKF (этап 6) |
+| `/map/ground_truth` | nav_msgs/OccupancyGrid | сетка занятости по истинной позе (этап 6) |
 
 ## Проверка
 
@@ -152,8 +176,8 @@ ros2 launch navigator_bringup simulation.launch.py use_localization:=true
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
-ros2 pkg list | grep navigator             # 3 пакета
-ros2 node list                             # 6 узлов без RViz (7 с RViz), без дублей
+ros2 pkg list | grep navigator             # 5 пакетов
+ros2 node list                             # 6 узлов без RViz (7 с RViz, 9 с картами)
 ros2 topic list                            # все топики из таблицы выше
 ros2 topic hz /scan_ideal                  # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges            # ~10 Гц
@@ -162,6 +186,8 @@ ros2 topic echo --once /ground_truth/odom  # истинная поза
 ros2 run tf2_ros tf2_echo map base_footprint
 ros2 topic hz /estimate/odom               # ~20 Гц (этап 5, если включён EKF)
 ros2 topic echo --once /estimate/error     # ошибка оценки (этап 5)
+ros2 topic hz /map/estimate                # ~1 Гц (этап 6, если запущен маппер)
+ros2 topic echo --once /map/estimate       # OccupancyGrid: -1/0/100
 ```
 
 Ожидаемо: TF `map → base_footprint` движется по квадрату 4 × 4 м со скоростью 0.35 м/с,
@@ -211,12 +237,74 @@ PYTHONPATH=src/navigator_localization:src/navigator_sim \
 `results/result_localization_error.png` (ошибки `x`, `y`, `yaw` во времени),
 RMSE печатается в консоль.
 
+## Этап 6 — Построение сетки занятости
+
+`navigator_slam` строит `nav_msgs/OccupancyGrid` по сканам лидара и позе
+(`occupancy_grid_node`):
+
+- **свободные ячейки** — вдоль каждого валидного луча (шаг `resolution / 2`);
+- **занятые ячейки** — в точке отражения луча;
+- вклад копится в лог-оддсах: `+log(p_occ/(1-p_occ))` за попадание,
+  `−log(p_free/(1-p_free))` за проход (порог в `occupancy.yaml`), значения
+  ограничены `[log_odds_min, log_odds_max]`, поэтому карта обратима;
+- `inf`/`NaN` и дальности вне `[range_min, range_max]` (пропуски лидара)
+  игнорируются; поза берётся ближайшая по штампу из буфера (допуск
+  `pose_tolerance`).
+
+Ячейка публикуется как `100` (занята), `0` (свободна) или `-1` (неизвестна)
+по порогам `occupied_threshold` / `free_threshold`. Сетка 180 × 180 ячеек
+(0.05 м, −0.5…8.5 м) покрывает полигон вместе со стенами; публикация 1 Гц.
+
+Сравнение карт — тот же узел, запущенный дважды на одних и тех же сканах, но с
+разной позой (`mapping.launch.py pose_source:=both`):
+
+| Топик | Поза |
+|---|---|
+| `/map/estimate` | `/estimate/odom` — оценка EKF (этап 5) |
+| `/map/ground_truth` | `/ground_truth/odom` — истинная поза (эталон) |
+
+Запуск, проверка и тесты:
+
+```bash
+ros2 launch navigator_bringup mapping.launch.py use_rviz:=false pose_source:=both
+ros2 topic hz /map/estimate                 # ~1 Гц
+ros2 topic echo --once /map/estimate        # width/height 180, data из -1/0/100
+
+PYTHONPATH=src/navigator_slam:src/navigator_sim \
+  python3 -m unittest discover -s src/navigator_slam/test -v
+```
+
+Сравнение одной командой:
+
+```bash
+./run_map_compare.sh          # 62 с
+./run_map_compare.sh 90       # 90 с
+```
+
+Метрики сравнения (`tools/map_compare.py`):
+
+- **расстояние** от занятых ячеек одной карты до ближайшей занятой ячейки другой
+  (среднее и максимум, метры) — основная метрика точности карты;
+- IoU занятых ячеек и доля совпавших ячеек среди известных в обеих картах;
+- число ячеек, занятых только в одной из карт.
+
+IoU по занятым ячейкам чувствителен к сдвигу: стены и ориентиры занимают 1–2
+ячейки, поэтому сдвиг даже на одну ячейку (0.05 м) заметно его снижает — карты
+считаются совпадающими прежде всего по расстоянию. Результат —
+`results/result_map_compare.png` (истина, оценка, различия).
+
+Важное ограничение: обе карты строятся по одним и тем же сканам, поэтому
+различие отражает только ошибку позы. Карта по истинной позе — эталон
+симуляции; на реальном роботе такой эталон появляется лишь после EKF-SLAM
+(этап 8).
+
 ## Остановка
 
 `Ctrl+C` в терминале запуска. Если после аварийного прерывания остались процессы:
 
 ```bash
 pkill -9 -f lib/navigator_sim
+pkill -9 -f lib/navigator_slam
 pkill -9 -f /opt/ros/jazzy/lib/robot_state_publisher
 pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
 ```
@@ -231,6 +319,9 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
   (лидар `0.18 0 0.34`, СШП-метка `-0.15 0.12 0.46`, колея 0.42 м).
 - `navigator_localization/config/ekf.yaml` — начальная поза и её σ, `Q`, `σ` СШП,
   смещение метки, якоря A1..A4, частота прогноза 20 Гц (этап 5).
+- `navigator_slam/config/occupancy.yaml` — разрешение 0.05 м, границы сетки,
+  `p_occupied`/`p_free`, клип лог-оддсов, пороги публикации, смещение лидара,
+  `max_range`, допуск по позе, частота публикации (этап 6).
 
 ## Рисунки для отчёта
 
@@ -244,6 +335,8 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
 | `results/result_map.png` | вид сверху: полигон, истинная траектория, накопленная карта лидара |
 | `results/result_scan.png` | один скан: идеальные и зашумлённые точки в системе лидара |
 | `results/result_uwb.png` | дальности A1–A4: идеал vs шум + смещение + пропуски |
+| `results/result_localization_*.png` | локализация EKF: траектория и ошибки (этап 5) |
+| `results/result_map_compare.png` | сетка занятости по истинной и оценённой позе + различия (этап 6) |
 
 Сырые данные прогона сохраняются в `results/plot_data.npz`. Повторная отрисовка без
 запуска симуляции:
@@ -257,7 +350,9 @@ python3 tools/visualize.py --replot
 
 `navigator_description/config/navigator.rviz` задаёт вид сверху: модель робота, TF,
 истинную траекторию и оценку EKF (`/estimate/odom`, `/estimate/path`), маркеры
-полигона и два лидарных скана (`/scan_ideal`, `/scan_noisy`), Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
+полигона, два лидарных скана (`/scan_ideal`, `/scan_noisy`) и карты сетки
+занятости (`/map/estimate` включён, `/map/ground_truth` выключен по умолчанию),
+Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
 можно снимать скриншоты через виртуальный дисплей:
 
 ```bash
@@ -276,6 +371,8 @@ import -window root rviz.png
 | `run_visualize.sh`: «Workspace is not built yet» | выполнить `colcon build --symlink-install` или `./run.sh` |
 | `run_visualize.sh` падает на импорте | установить `python3-numpy python3-matplotlib` |
 | `Package 'navigator_bringup' not found` | workspace не собран или не подключён `install/setup.bash` |
+| `/map/estimate` отсутствует | не запущен `mapping.launch.py` (`pose_source:=estimate`/`both`) или ещё нет `/estimate/odom` |
+| `map_compare.py`: «no map on …» | маппер запущен без `pose_source:=both` |
 | RViz не открывается | Windows 10 без X-сервера — используйте `use_rviz:=false` или настройте `DISPLAY` |
 | Сборка идёт очень долго | проект лежит в `/mnt/c` — скопируйте в `~` (см. `WSL_SETUP.md`, раздел 3) |
 
