@@ -27,8 +27,10 @@ navigator_ws/
 ├── .gitignore                    # build/, install/, log/, results/plot_data.npz
 ├── run.sh                        # сборка + запуск симуляции
 ├── run_visualize.sh              # headless-прогон + рендер PNG в results/
+├── run_localization_metrics.sh   # headless-прогон EKF + графики ошибок
 ├── results/                      # готовые рисунки для отчёта
 ├── tools/visualize.py            # сбор данных из топиков и отрисовка
+├── tools/localization_metrics.py # RMSE и графики ошибок локализации
 └── src/
     ├── navigator_description/    # только описание робота
     │   ├── CMakeLists.txt, package.xml
@@ -83,6 +85,8 @@ colcon build --symlink-install
 | `./run.sh [аргументы launch]` | `colcon build --symlink-install`, `source install/setup.bash`, `ros2 launch navigator_bringup simulation.launch.py`. Аргументы пробрасываются в launch: `./run.sh use_rviz:=false`. Собирает при каждом запуске (~пара секунд), чтобы не стартовать устаревший код. |
 | `./run_visualize.sh [секунды]` | Запускает `tools/visualize.py` в фоне, поднимает headless-симуляцию, пишет данные (62 с по умолчанию, можно `./run_visualize.sh 90`), рендерит PNG в `results/`, затем гасит симуляцию. **Требует уже собранный `install/`** — после правок кода сначала `./run.sh` или `colcon build`. |
 | `python3 tools/visualize.py --replot` | Перерисовывает графики из сохранённого `results/plot_data.npz` без запуска симуляции. Дополнительно: `--duration N`, `--out DIR`. |
+| `./run_localization_metrics.sh [секунды]` | headless-прогон с EKF, запись `/ground_truth/odom` и `/estimate/odom` (62 с по умолчанию), PNG и RMSE в `results/`. |
+| `python3 tools/localization_metrics.py --replot` | Перерисовывает метрики из `results/localization_data.npz`. |
 
 Оба shell-скрипта берут дистрибутив ROS из `/opt/ros/jazzy/setup.bash`; другой путь можно
 задать переменной, например `ROS_SETUP=/opt/ros/humble/setup.bash ./run.sh`.
@@ -195,6 +199,17 @@ Unit-тесты (без ROS):
 PYTHONPATH=src/navigator_localization:src/navigator_sim \
   python3 -m unittest discover -s src/navigator_localization/test -v
 ```
+
+Метрики и графики ошибок одной командой:
+
+```bash
+./run_localization_metrics.sh          # 62 с
+./run_localization_metrics.sh 90       # 90 с
+```
+
+Результаты: `results/result_localization_trajectory.png` (истина vs оценка),
+`results/result_localization_error.png` (ошибки `x`, `y`, `yaw` во времени),
+RMSE печатается в консоль.
 
 ## Остановка
 

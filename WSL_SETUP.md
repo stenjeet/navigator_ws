@@ -199,6 +199,18 @@ ros2 topic echo --once /estimate/error
 На зашумлённых СШП ошибка положения — единицы сантиметров. Курс по одной
 метке в статике не наблюдается, поэтому он уточняется на поворотах.
 
+Графики ошибок и итоговый RMSE одной командой:
+
+```bash
+cd ~/navigator_ws
+./run_localization_metrics.sh          # 62 с
+./run_localization_metrics.sh 90       # 90 с
+```
+
+Результаты — `results/result_localization_trajectory.png` (истина vs оценка)
+и `results/result_localization_error.png` (ошибки `x`, `y`, `yaw`); RMSE
+печатается в консоль.
+
 ---
 
 ## 7. Картинки для отчёта (опционально)
