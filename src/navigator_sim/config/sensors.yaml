@@ -6,6 +6,14 @@ sensor_models:
     uwb_dropout_probability: 0.03
     uwb_biases: [0.02, -0.03, 0.04, 0.01]   # per-anchor bias A1..A4 [m]
     uwb_rate_hz: 10.0
+    # Scenario hooks of the stage-9 analysis (defaults = nominal model).
+    # Anchor layout as flat x, y, z triples; an empty list uses
+    # world.UWB_ANCHORS (the report polygon). Set the same list in ekf.yaml.
+    anchors: []
+    # Full UWB outage window [s] on the node clock, relative to the first
+    # timer callback: every range is NaN inside it. 0.0 / 0.0 disables it.
+    outage_start_s: 0.0
+    outage_end_s: 0.0
     # Lidar (report section 4.3, table 4.2)
     lidar_sigma: 0.02
     lidar_bias: 0.01
