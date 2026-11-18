@@ -23,15 +23,6 @@ def generate_launch_description():
     sensors_yaml = os.path.join(sim_share, 'config', 'sensors.yaml')
     ekf_yaml = os.path.join(loc_share, 'config', 'ekf.yaml')
 
-    # Stage 9 (tools/analysis.py) runs scenarios with generated copies of the
-    # two parameter files. mapping.launch.py includes this file without
-    # forwarding extra launch arguments, so the paths can also come from the
-    # environment; an explicit launch argument always wins.
-    default_sensors_yaml = os.environ.get(
-        'NAVIGATOR_SENSORS_PARAMS', sensors_yaml
-    )
-    default_ekf_yaml = os.environ.get('NAVIGATOR_EKF_PARAMS', ekf_yaml)
-
     with open(urdf_path, 'r') as infp:
         robot_description = infp.read()
 
@@ -48,11 +39,11 @@ def generate_launch_description():
             'use_localization', default_value='false',
             description='Start the EKF localization node (stage 5).'),
         DeclareLaunchArgument(
-            'sensors_params', default_value=default_sensors_yaml,
+            'sensors_params', default_value=sensors_yaml,
             description='sensors.yaml used by the UWB and lidar models '
                         '(default: the navigator_sim config).'),
         DeclareLaunchArgument(
-            'ekf_params', default_value=default_ekf_yaml,
+            'ekf_params', default_value=ekf_yaml,
             description='ekf.yaml used by the localization node '
                         '(default: the navigator_localization config).'),
         Node(

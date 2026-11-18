@@ -29,13 +29,10 @@ passed with ``--scenarios``):
 quick run covers roughly half a lap).
 
 Scenario overrides are applied on top of the package configs by a deep merge:
-``sensors`` holds flat ``sensors.yaml`` parameters, ``ekf`` holds flat
-``ekf.yaml`` parameters. The generated copies live in ``<out>/configs`` and are
-passed to the simulation through the ``sensors_params`` / ``ekf_params`` launch
-arguments of ``simulation.launch.py``. ``mapping.launch.py`` includes that file
-without forwarding extra arguments, so the paths also travel in the
-``NAVIGATOR_SENSORS_PARAMS`` / ``NAVIGATOR_EKF_PARAMS`` environment variables,
-which ``simulation.launch.py`` uses as the defaults of those two arguments.
+``sensors`` holds flat sensor parameters, ``ekf`` holds flat ``ekf.yaml``
+parameters. The generated copies live in ``<out>/configs`` and are passed to the
+simulation through the ``sensors_params`` / ``ekf_params`` launch arguments,
+which ``mapping.launch.py`` forwards to ``simulation.launch.py``.
 
 Outputs (``--out`` defaults to ``results/analysis``, figures to ``results/``):
 
@@ -104,10 +101,8 @@ MAP_TOPICS = {
     'estimate': '/map/estimate',
 }
 
-# The launch file gives the two sensor models these node names, while
-# ``sensors.yaml`` keeps every sensor parameter in one shared ``sensor_models``
-# section. Scenario copies therefore repeat the parameters under the real node
-# names so that the overrides are actually applied.
+# The launch file gives the two sensor models these node names; a scenario copy
+# carries one section per node, exactly like the package ``sensors.yaml``.
 SENSOR_NODE_NAMES = ('uwb_model_node', 'lidar_model_node')
 SENSOR_SHARED_PARAMS = ('random_seed',)
 
@@ -320,18 +315,25 @@ def load_yaml(path):
 
 
 def load_node_params(path):
-    """Flat ``ros__parameters`` mapping of a single-section parameter file."""
+    """Flat ``ros__parameters`` mapping of a parameter file.
+
+    ``ekf.yaml`` has one node section; ``sensors.yaml`` has one section per
+    sensor node (``uwb_model_node`` and ``lidar_model_node``). The sections are
+    merged into a single flat mapping; the only parameter they share is
+    ``random_seed`` and the values are identical.
+    """
     document = load_yaml(path)
     if not isinstance(document, dict) or not document:
         raise ValueError('%s: expected a parameter file' % path)
-    sections = list(document.items())
-    if len(sections) > 1:
-        raise ValueError('%s: expected exactly one node section' % path)
-    node_name, section = sections[0]
-    parameters = (section or {}).get('ros__parameters')
-    if not isinstance(parameters, dict):
-        raise ValueError('%s: section %r has no ros__parameters' % (path, node_name))
-    return dict(parameters)
+    parameters = {}
+    for node_name, section in document.items():
+        node_parameters = (section or {}).get('ros__parameters')
+        if not isinstance(node_parameters, dict):
+            raise ValueError(
+                '%s: section %r has no ros__parameters' % (path, node_name)
+            )
+        parameters.update(node_parameters)
+    return parameters
 
 
 def load_ekf_document(path=EKF_CONFIG_PATH):
@@ -346,9 +348,8 @@ def write_sensor_config(path, base_params, overrides=None):
     """Write a ``sensors.yaml`` copy with the scenario overrides applied.
 
     Both sensor nodes launched by ``simulation.launch.py`` receive this file,
-    so the parameters are repeated under ``uwb_model_node`` and
-    ``lidar_model_node`` (the names the launch file gives the nodes, while
-    ``sensors.yaml`` keeps everything in one shared ``sensor_models`` section).
+    so the parameters are split into the ``uwb_model_node`` and
+    ``lidar_model_node`` sections (the names the launch file gives the nodes).
     ``uwb_*``/``outage_*``/``anchors`` overrides go to the UWB node and
     ``lidar_*`` overrides to the lidar node; each section only carries the
     parameters of its own node.
@@ -742,17 +743,9 @@ def launch_command(sensors_path, ekf_path):
     ]
 
 
-def child_environment(sensors_path, ekf_path):
-    """Environment for the launch subprocess.
-
-    ``mapping.launch.py`` does not forward extra launch arguments to the
-    included ``simulation.launch.py``, so the scenario config paths are also
-    exported; ``simulation.launch.py`` uses them as the defaults of the
-    ``sensors_params`` and ``ekf_params`` arguments.
-    """
+def child_environment():
+    """Environment for the launch subprocess (unbuffered child output)."""
     environment = dict(os.environ)
-    environment['NAVIGATOR_SENSORS_PARAMS'] = os.path.abspath(sensors_path)
-    environment['NAVIGATOR_EKF_PARAMS'] = os.path.abspath(ekf_path)
     environment.setdefault('PYTHONUNBUFFERED', '1')
     return environment
 
@@ -810,7 +803,7 @@ def run_one_scenario(scenario, args, config_dir, sensor_base, ekf_document):
         process = subprocess.Popen(
             command,
             cwd=WORKSPACE_DIR,
-            env=child_environment(sensors_path, ekf_path),
+            env=child_environment(),
             stdout=log_stream,
             stderr=subprocess.STDOUT,
         )

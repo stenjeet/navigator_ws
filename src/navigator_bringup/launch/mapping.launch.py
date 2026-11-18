@@ -28,15 +28,24 @@ def generate_launch_description():
     * ``ground_truth`` - ``/ground_truth/odom``, the reference map;
     * ``both`` - two mapper instances on the same scans, which is exactly what
       the stage-6 map comparison needs (see ``tools/map_compare.py``).
+
+    ``sensors_params`` / ``ekf_params`` are forwarded to ``simulation.launch.py``
+    so the stage-9 scenario runner can supply alternative parameter files.
     """
     bringup_share = get_package_share_directory('navigator_bringup')
     slam_share = get_package_share_directory('navigator_slam')
+    sim_share = get_package_share_directory('navigator_sim')
+    loc_share = get_package_share_directory('navigator_localization')
 
     simulation = os.path.join(bringup_share, 'launch', 'simulation.launch.py')
     occupancy_yaml = os.path.join(slam_share, 'config', 'occupancy.yaml')
+    sensors_yaml = os.path.join(sim_share, 'config', 'sensors.yaml')
+    ekf_yaml = os.path.join(loc_share, 'config', 'ekf.yaml')
 
     use_rviz = LaunchConfiguration('use_rviz')
     pose_source = LaunchConfiguration('pose_source')
+    sensors_params = LaunchConfiguration('sensors_params')
+    ekf_params = LaunchConfiguration('ekf_params')
 
     def make_nodes(context, *args, **kwargs):
         source = pose_source.perform(context).strip()
@@ -55,6 +64,8 @@ def generate_launch_description():
                     'use_localization': (
                         'true' if 'estimate' in selected else 'false'
                     ),
+                    'sensors_params': sensors_params,
+                    'ekf_params': ekf_params,
                 }.items(),
             ),
         ]
@@ -80,5 +91,13 @@ def generate_launch_description():
             'pose_source', default_value='estimate',
             description="Pose used to build the map: 'estimate', "
                         "'ground_truth' or 'both'."),
+        DeclareLaunchArgument(
+            'sensors_params', default_value=sensors_yaml,
+            description='Parameter file for the UWB and lidar models '
+                        '(default: the navigator_sim config).'),
+        DeclareLaunchArgument(
+            'ekf_params', default_value=ekf_yaml,
+            description='Parameter file for the EKF localizer '
+                        '(default: the navigator_localization config).'),
         OpaqueFunction(function=make_nodes),
     ])

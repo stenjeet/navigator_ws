@@ -1,4 +1,12 @@
-sensor_models:
+# Parameters of the UWB and lidar models (report sections 4.2, 4.3).
+#
+# simulation.launch.py passes this file to both nodes, so the file has one
+# section per node and the section name must match the node name the launch
+# file gives it. Before stage 9 both nodes shared a single `sensor_models`
+# section, which never matched a node name, so the values below were silently
+# ignored and the code defaults were used (they happen to be identical).
+
+uwb_model_node:
   ros__parameters:
     random_seed: 12025
     # UWB (report section 4.2, table 4.1)
@@ -14,6 +22,10 @@ sensor_models:
     # timer callback: every range is NaN inside it. 0.0 / 0.0 disables it.
     outage_start_s: 0.0
     outage_end_s: 0.0
+
+lidar_model_node:
+  ros__parameters:
+    random_seed: 12025
     # Lidar (report section 4.3, table 4.2)
     lidar_sigma: 0.02
     lidar_bias: 0.01

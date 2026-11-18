@@ -574,18 +574,9 @@ class TestRunnerPieces(TempDirMixin, unittest.TestCase):
         self.assertIn('sensors_params:=/cfg/sensors.yaml', command)
         self.assertIn('ekf_params:=/cfg/ekf.yaml', command)
 
-    def test_child_environment_exports_the_config_paths(self):
-        environment = ANALYSIS.child_environment(
-            os.path.join('cfg', 'sensors.yaml'), os.path.join('cfg', 'ekf.yaml')
-        )
-        self.assertEqual(
-            environment['NAVIGATOR_SENSORS_PARAMS'],
-            os.path.abspath(os.path.join('cfg', 'sensors.yaml')),
-        )
-        self.assertEqual(
-            environment['NAVIGATOR_EKF_PARAMS'],
-            os.path.abspath(os.path.join('cfg', 'ekf.yaml')),
-        )
+    def test_child_environment_is_unbuffered(self):
+        environment = ANALYSIS.child_environment()
+        self.assertEqual(environment['PYTHONUNBUFFERED'], '1')
 
     def test_unbuilt_workspace_fails_loudly(self):
         with self.assertRaises(SystemExit):
