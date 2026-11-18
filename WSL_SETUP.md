@@ -347,3 +347,4 @@ python3 tools/visualize.py --replot
 | `/slam/odom` отсутствует | не запущен `slam.launch.py`; EKF-локализация этапа 5 для SLAM не нужна |
 | `analysis.py` падает на старте сценария | EKF не успел опубликовать `/estimate/error` — увеличьте `--startup-timeout` |
 | «sensor параметры не применились» | проверьте секции `sensors.yaml`: имя секции должно совпадать с именем ноды (`uwb_model_node`, `lidar_model_node`) |
+| `uwb_model_node` падает с `ParameterUninitializedException: anchors` | в YAML стоит `anchors: []`; ROS не выводит тип пустого массива — уберите ключ (будут якоря полигона) или задайте все тройки `x, y, z` |

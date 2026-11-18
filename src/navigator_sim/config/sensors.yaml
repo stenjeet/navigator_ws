@@ -15,9 +15,11 @@ uwb_model_node:
     uwb_biases: [0.02, -0.03, 0.04, 0.01]   # per-anchor bias A1..A4 [m]
     uwb_rate_hz: 10.0
     # Scenario hooks of the stage-9 analysis (defaults = nominal model).
-    # Anchor layout as flat x, y, z triples; an empty list uses
-    # world.UWB_ANCHORS (the report polygon). Set the same list in ekf.yaml.
-    anchors: []
+    # Anchor layout override as flat x, y, z triples. Leave the key out to use
+    # world.UWB_ANCHORS (the report polygon); do NOT write `anchors: []`,
+    # because ROS cannot infer the type of an empty YAML sequence and stores
+    # the parameter as uninitialized. Set the same list in ekf.yaml, e.g.
+    #   anchors: [0.4, 0.4, 1.2, 7.6, 0.4, 1.2, 7.6, 7.6, 1.2, 0.4, 7.6, 1.2]
     # Full UWB outage window [s] on the node clock, relative to the first
     # timer callback: every range is NaN inside it. 0.0 / 0.0 disables it.
     outage_start_s: 0.0

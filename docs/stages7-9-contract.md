@@ -208,8 +208,10 @@ Allowed changes to existing files, strictly backwards compatible:
   (path to a YAML file, default = the package config) that are passed to the
   nodes instead of the defaults. Existing behaviour with no arguments must not
   change.
-- `uwb_model_node.py`: add parameters `anchors` (flat `x, y, z` triples; empty
-  list means `world.UWB_ANCHORS`) and `outage_start_s` / `outage_end_s`
+- `uwb_model_node.py`: add parameters `anchors` (flat `x, y, z` triples; the
+  code default is `world.UWB_ANCHORS` and the key is left out of `sensors.yaml`,
+  because an empty YAML sequence is stored by ROS as an uninitialized parameter)
+  and `outage_start_s` / `outage_end_s`
   (`0.0 / 0.0` = disabled; inside the window every range is `NaN`). Defaults
   reproduce the current output bit-for-bit. Keep the existing seeded RNG order.
 - `sensors.yaml`: only additions with comments (new defaults).

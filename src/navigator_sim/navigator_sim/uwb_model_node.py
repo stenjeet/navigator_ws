@@ -23,6 +23,7 @@ import math
 import random
 
 import rclpy
+from rclpy.exceptions import ParameterUninitializedException
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
@@ -32,6 +33,13 @@ from nav_msgs.msg import Odometry
 from navigator_sim import world
 
 NAN = float('nan')
+
+#: Default anchor layout of the polygon as a flat x, y, z list. It is the code
+#: default because ROS cannot infer the type of an empty YAML sequence: writing
+#: ``anchors: []`` to a parameter file makes the parameter NOT_SET.
+DEFAULT_ANCHORS = [
+    float(value) for anchor in world.UWB_ANCHORS for value in anchor[1:4]
+]
 
 
 class UwbModelNode(Node):
@@ -43,8 +51,10 @@ class UwbModelNode(Node):
         self.declare_parameter('uwb_dropout_probability', 0.03)
         self.declare_parameter('uwb_biases', [0.02, -0.03, 0.04, 0.01])
         self.declare_parameter('uwb_rate_hz', 10.0)
-        # Empty list = the anchors of the report polygon (world.UWB_ANCHORS).
-        self.declare_parameter('anchors', [])
+        # Flat x, y, z triples; the default is the report polygon
+        # (world.UWB_ANCHORS). Do not set an empty list in YAML: ROS stores it
+        # as an uninitialized parameter.
+        self.declare_parameter('anchors', DEFAULT_ANCHORS)
         # UWB outage window [s] on the node clock, relative to the first timer
         # callback; 0.0 / 0.0 disables it.
         self.declare_parameter('outage_start_s', 0.0)
@@ -100,8 +110,18 @@ class UwbModelNode(Node):
         )
 
     def parse_anchors(self):
-        """Anchors from the ``anchors`` parameter, or the polygon defaults."""
-        flat = [float(value) for value in self.get_parameter('anchors').value]
+        """Anchors from the ``anchors`` parameter, or the polygon defaults.
+
+        An empty or uninitialized parameter falls back to ``world.UWB_ANCHORS``;
+        the latter happens when a parameter file sets ``anchors: []`` because
+        ROS cannot infer the type of an empty YAML sequence.
+        """
+        try:
+            flat = [
+                float(value) for value in self.get_parameter('anchors').value
+            ]
+        except ParameterUninitializedException:
+            flat = []
         if not flat:
             return world.UWB_ANCHORS
         if len(flat) % 3 != 0:

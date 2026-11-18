@@ -235,8 +235,15 @@ class TestScenarioExpansion(unittest.TestCase):
     def test_override_keys_exist_in_the_package_configs(self):
         sensor_base = ANALYSIS.load_node_params(ANALYSIS.SENSORS_CONFIG_PATH)
         ekf_base = ANALYSIS.load_node_params(ANALYSIS.EKF_CONFIG_PATH)
+        # `anchors` is deliberately absent from sensors.yaml: the node default
+        # is world.UWB_ANCHORS and an empty YAML sequence would be stored as an
+        # uninitialized parameter, so scenarios pass a full list only when they
+        # change the layout.
+        scenario_only = {'anchors'}
         for scenario in ANALYSIS.build_scenarios():
             for key in scenario['sensors']:
+                if key in scenario_only:
+                    continue
                 self.assertIn(key, sensor_base, 'unknown sensors.yaml key %r' % key)
             for key in scenario['ekf']:
                 self.assertIn(key, ekf_base, 'unknown ekf.yaml key %r' % key)
@@ -289,8 +296,10 @@ class TestConfigWriting(TempDirMixin, unittest.TestCase):
         self.assertEqual(uwb['uwb_sigma'], 0.2)
         self.assertEqual(uwb['outage_start_s'], 5.0)
         self.assertEqual(uwb['outage_end_s'], 0.0)
-        self.assertEqual(uwb['anchors'], [])
         self.assertNotIn('lidar_sigma', uwb)
+        # The default anchor layout stays in the node (world.UWB_ANCHORS): an
+        # empty YAML sequence would be stored as an uninitialized parameter.
+        self.assertNotIn('anchors', uwb)
         self.assertEqual(lidar['lidar_sigma'], self.sensor_base['lidar_sigma'])
         self.assertEqual(lidar['random_seed'], self.sensor_base['random_seed'])
         self.assertNotIn('uwb_sigma', lidar)
@@ -304,6 +313,15 @@ class TestConfigWriting(TempDirMixin, unittest.TestCase):
         self.assertEqual(
             document['uwb_model_node']['ros__parameters']['anchors'], anchors
         )
+
+    def test_anchor_override_is_written_when_requested(self):
+        path = os.path.join(self.temp_dir, 'sensors_anchors.yaml')
+        anchors = [0.4, 0.4, 1.2, 7.6, 0.4, 1.2, 7.6, 7.6, 1.2, 0.4, 7.6, 1.2]
+        ANALYSIS.write_sensor_config(path, self.sensor_base, {'anchors': anchors})
+        document = ANALYSIS.load_yaml(path)
+        uwb = document['uwb_model_node']['ros__parameters']
+        self.assertEqual(uwb['anchors'], anchors)
+        self.assertNotIn('anchors', document['lidar_model_node']['ros__parameters'])
 
     def test_ekf_config_keeps_the_section_and_applies_overrides(self):
         path = os.path.join(self.temp_dir, 'ekf.yaml')

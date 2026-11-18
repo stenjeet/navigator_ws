@@ -480,8 +480,11 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
   `max_landmarks`, подтверждение ориентиров (`min_landmark_hits`,
   `tentative_gate`), частоты публикации (этап 8).
 - `navigator_sim/config/sensors.yaml` — одна секция на ноду (`uwb_model_node`,
-  `lidar_model_node`) и параметры сценариев этапа 9: `anchors` (пусто = якоря
-  полигона) и окно без СШП `outage_start_s`/`outage_end_s`.
+  `lidar_model_node`) и параметры сценариев этапа 9: `anchors` (плоские тройки
+  `x, y, z`; если ключ не задан — якоря полигона `world.UWB_ANCHORS`) и окно без
+  СШП `outage_start_s`/`outage_end_s`. Пустой список `anchors: []` в YAML писать
+  нельзя: ROS не выводит тип пустого массива и объявляет параметр
+  неинициализированным.
 
 ## Рисунки для отчёта
 
