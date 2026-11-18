@@ -1,0 +1,33 @@
+ekf_node:
+  ros__parameters:
+    # Initial pose and its 1-sigma uncertainty.
+    initial_x: 1.5
+    initial_y: 1.5
+    initial_yaw: 0.0
+    initial_std_x: 0.10
+    initial_std_y: 0.10
+    initial_std_yaw: 0.0873   # 5 deg
+
+    # Process noise variances per prediction step (differential drive).
+    q_x: 1.0e-4
+    q_y: 1.0e-4
+    q_yaw: 1.0e-4
+
+    # UWB measurement noise (1-sigma, metres); R = uwb_sigma^2.
+    uwb_sigma: 0.05
+
+    # UWB tag mounting offset from base_link (matches world.UWB_TAG_OFFSET).
+    tag_offset: [-0.15, 0.12, 0.46]
+    use_tag_offset: true
+
+    # Anchors A1..A4 as a flat list of x, y, z triples (matches world.UWB_ANCHORS).
+    anchor_names: ['A1', 'A2', 'A3', 'A4']
+    anchors: [0.50, 0.50, 1.20,
+              7.40, 0.80, 1.20,
+              7.10, 7.50, 1.20,
+              0.70, 6.90, 1.20]
+
+    predict_rate_hz: 20.0
+    path_max_poses: 5000
+    path_every_n: 4
+    publish_error: true
