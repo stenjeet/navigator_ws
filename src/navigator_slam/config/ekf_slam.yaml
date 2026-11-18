@@ -1,0 +1,63 @@
+ekf_slam_node:
+  ros__parameters:
+    # Topics. Observations are pose-free (base_footprint), produced by the
+    # stage-7 landmark_node; ground_truth_topic is only used for /slam/error.
+    cmd_topic: /cmd_vel
+    observation_topic: /landmarks/observations
+    uwb_topic: /uwb/noisy_ranges
+    ground_truth_topic: /ground_truth/odom
+    odom_topic: /slam/odom
+    path_topic: /slam/path
+    landmarks_topic: /slam/landmarks
+    markers_topic: /slam/markers
+    error_topic: /slam/error
+
+    # Frames. map -> odom is the fixed identity transform of the simulation and
+    # odom -> base_footprint stays owned by the ground-truth motion_node, so the
+    # node publishes no TF at all.
+    frame_id: map
+    child_frame_id: base_footprint
+
+    # Initial pose and its 1-sigma uncertainty (the square trajectory start).
+    initial_x: 1.5
+    initial_y: 1.5
+    initial_yaw: 0.0
+    initial_std_x: 0.10
+    initial_std_y: 0.10
+    initial_std_yaw: 0.0873   # 5 deg
+
+    # Process noise variances of the differential-drive prediction step
+    # (robot block of Q; the landmark blocks get no process noise).
+    q_x: 1.0e-4
+    q_y: 1.0e-4
+    q_yaw: 1.0e-4
+    predict_rate_hz: 20.0
+
+    # UWB range updates (same model, anchors and tag offset as stage 5).
+    # uwb_sigma is a 1-sigma range error [m], R = uwb_sigma^2; NaN = dropout.
+    use_uwb: true
+    uwb_sigma: 0.05
+    tag_offset: [-0.15, 0.12, 0.46]   # matches world.UWB_TAG_OFFSET
+    anchors: [0.50, 0.50, 1.20,       # A1..A4, x, y, z (world.UWB_ANCHORS)
+              7.40, 0.80, 1.20,
+              7.10, 7.50, 1.20,
+              0.70, 6.90, 1.20]
+
+    # Landmark model: chi-square 99 % gate for the 2-dof association test
+    # (9.21); sigma_range/sigma_bearing are the model floors in metres and
+    # radians (added to the detector variances of every observation);
+    # initial_landmark_std is the minimum 1-sigma of a new landmark.
+    gate: 9.21
+    sigma_range: 0.05
+    sigma_bearing: 0.05
+    initial_landmark_std: 0.10
+    max_landmarks: 50
+
+    # Publishing: /slam/path keeps the last path_max_poses poses and every
+    # path_every_n-th prediction is appended; the landmark map and the markers
+    # are published at publish_rate_hz; publish_error enables /slam/error and
+    # the RMSE log line.
+    path_max_poses: 5000
+    path_every_n: 4
+    publish_error: true
+    publish_rate_hz: 5.0
