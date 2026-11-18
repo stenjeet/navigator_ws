@@ -10,7 +10,9 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     """Full simulation for the Navigator-M polygon: true motion + UWB + lidar +
-    map + RViz (report sections 3-4). Pass use_rviz:=false for a headless run."""
+    map + RViz (report sections 3-4). Pass use_rviz:=false for a headless run;
+    sensors_params / ekf_params point the nodes at alternative parameter files
+    (used by the stage-9 scenario runner)."""
     description_share = get_package_share_directory('navigator_description')
     sim_share = get_package_share_directory('navigator_sim')
     loc_share = get_package_share_directory('navigator_localization')
@@ -21,11 +23,22 @@ def generate_launch_description():
     sensors_yaml = os.path.join(sim_share, 'config', 'sensors.yaml')
     ekf_yaml = os.path.join(loc_share, 'config', 'ekf.yaml')
 
+    # Stage 9 (tools/analysis.py) runs scenarios with generated copies of the
+    # two parameter files. mapping.launch.py includes this file without
+    # forwarding extra launch arguments, so the paths can also come from the
+    # environment; an explicit launch argument always wins.
+    default_sensors_yaml = os.environ.get(
+        'NAVIGATOR_SENSORS_PARAMS', sensors_yaml
+    )
+    default_ekf_yaml = os.environ.get('NAVIGATOR_EKF_PARAMS', ekf_yaml)
+
     with open(urdf_path, 'r') as infp:
         robot_description = infp.read()
 
     use_rviz = LaunchConfiguration('use_rviz')
     use_localization = LaunchConfiguration('use_localization')
+    sensors_params = LaunchConfiguration('sensors_params')
+    ekf_params = LaunchConfiguration('ekf_params')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -34,6 +47,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'use_localization', default_value='false',
             description='Start the EKF localization node (stage 5).'),
+        DeclareLaunchArgument(
+            'sensors_params', default_value=default_sensors_yaml,
+            description='sensors.yaml used by the UWB and lidar models '
+                        '(default: the navigator_sim config).'),
+        DeclareLaunchArgument(
+            'ekf_params', default_value=default_ekf_yaml,
+            description='ekf.yaml used by the localization node '
+                        '(default: the navigator_localization config).'),
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
@@ -68,21 +89,21 @@ def generate_launch_description():
             package='navigator_sim',
             executable='uwb_model_node',
             name='uwb_model_node',
-            parameters=[sensors_yaml],
+            parameters=[sensors_params],
             output='screen'
         ),
         Node(
             package='navigator_sim',
             executable='lidar_model_node',
             name='lidar_model_node',
-            parameters=[sensors_yaml],
+            parameters=[sensors_params],
             output='screen'
         ),
         Node(
             package='navigator_localization',
             executable='ekf_node',
             name='ekf_node',
-            parameters=[ekf_yaml],
+            parameters=[ekf_params],
             condition=IfCondition(use_localization),
             output='screen'
         ),
