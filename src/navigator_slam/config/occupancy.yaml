@@ -1,0 +1,37 @@
+occupancy_grid_node:
+  ros__parameters:
+    # Data sources. The launch file overrides pose_topic/map_topic per instance:
+    #   ground truth -> /ground_truth/odom + /map/ground_truth
+    #   EKF estimate -> /estimate/odom     + /map/estimate
+    scan_topic: /scan_noisy
+    pose_topic: /estimate/odom
+    map_topic: /map
+    frame_id: map
+
+    # Grid geometry: covers the 8 x 8 m arena plus the 0.12 m walls and a margin.
+    resolution: 0.05
+    grid_min_x: -0.5
+    grid_min_y: -0.5
+    grid_max_x: 8.5
+    grid_max_y: 8.5
+
+    # Inverse sensor model in log-odds: hit/miss evidence per beam
+    # (log(p / (1 - p))) and its clamp.
+    p_occupied: 0.70
+    p_free: 0.30
+    log_odds_min: -2.0
+    log_odds_max: 3.5
+
+    # Publishing thresholds on the occupancy probability.
+    occupied_threshold: 0.60
+    free_threshold: 0.40
+
+    # Lidar mounting offset in base_link (matches world.LIDAR_OFFSET).
+    lidar_offset: [0.18, 0.0, 0.34]
+
+    # Ignore beams longer than this (metres) and poses older than 0.25 s.
+    max_range: 8.0
+    pose_tolerance: 0.25
+    pose_buffer_size: 100
+
+    publish_rate_hz: 1.0

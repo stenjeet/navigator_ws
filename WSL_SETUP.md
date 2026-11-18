@@ -1,8 +1,8 @@
 # Запуск проекта в Windows 11 + WSL 2 (Ubuntu 24.04, ROS 2 Jazzy)
 
 Пошаговая инструкция: от чистой Windows до работающей симуляции.
-Проект — папка `navigator_ws` (внутри `src/` четыре пакета: `navigator_description`,
-`navigator_sim`, `navigator_bringup`, `navigator_localization`).
+Проект — папка `navigator_ws` (внутри `src/` пять пакетов: `navigator_description`,
+`navigator_sim`, `navigator_bringup`, `navigator_localization`, `navigator_slam`).
 
 > Соответствие версий: **Ubuntu 24.04 → ROS 2 Jazzy**. ROS 2 Humble ставится только
 > на Ubuntu 22.04, поэтому здесь он не используется.
@@ -106,8 +106,8 @@ source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 ```
 
-Ожидаемо: `Summary: 4 packages finished` (`navigator_description`, `navigator_sim`,
-`navigator_bringup`, `navigator_localization`).
+Ожидаемо: `Summary: 5 packages finished` (`navigator_description`, `navigator_sim`,
+`navigator_bringup`, `navigator_localization`, `navigator_slam`).
 
 ---
 
@@ -146,6 +146,16 @@ ros2 launch navigator_bringup localization.launch.py
 ros2 launch navigator_bringup simulation.launch.py use_localization:=true
 ```
 
+Этап 6 — сетка занятости по оценённой позе (EKF запускается автоматически):
+
+```bash
+ros2 launch navigator_bringup mapping.launch.py
+# карта по истинной позе (без EKF):
+ros2 launch navigator_bringup mapping.launch.py pose_source:=ground_truth
+# обе карты одновременно — для сравнения:
+ros2 launch navigator_bringup mapping.launch.py pose_source:=both
+```
+
 Остановить — `Ctrl+C`.
 
 ---
@@ -156,8 +166,8 @@ ros2 launch navigator_bringup simulation.launch.py use_localization:=true
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
-ros2 pkg list | grep navigator             # 4 пакета
-ros2 node list                              # 6 узлов без EKF, 7 с EKF
+ros2 pkg list | grep navigator             # 5 пакетов
+ros2 node list                              # 6 узлов без EKF, 7 с EKF, 9 с картами
 ros2 topic list                             # список топиков
 ros2 topic hz /scan_ideal                   # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges             # ~10 Гц
@@ -166,6 +176,8 @@ ros2 topic echo --once /ground_truth/odom   # истинная поза
 ros2 run tf2_ros tf2_echo map base_footprint
 ros2 topic hz /estimate/odom                # ~20 Гц (если EKF включён)
 ros2 topic echo --once /estimate/error      # ошибка оценки (этап 5)
+ros2 topic hz /map/estimate                 # ~1 Гц (этап 6, если запущен маппер)
+ros2 topic echo --once /map/estimate         # OccupancyGrid: -1/0/100
 ```
 
 Ожидаемо: 6 узлов без EKF (7 с `use_localization:=true`), все топики из
@@ -211,6 +223,39 @@ cd ~/navigator_ws
 и `results/result_localization_error.png` (ошибки `x`, `y`, `yaw`); RMSE
 печатается в консоль.
 
+### Проверка сетки занятости (этап 6)
+
+Unit-тесты (без ROS):
+
+```bash
+cd ~/navigator_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+PYTHONPATH=src/navigator_slam:src/navigator_sim \
+  python3 -m unittest discover -s src/navigator_slam/test -v
+colcon test --packages-select navigator_slam
+```
+
+Запуск и проверка (второй терминал):
+
+```bash
+ros2 launch navigator_bringup mapping.launch.py use_rviz:=false pose_source:=both
+ros2 topic hz /map/estimate            # ~1 Гц
+ros2 topic echo --once /map/estimate   # width/height 180, resolution 0.05, data из -1/0/100
+```
+
+В логе `occupancy_grid_ekf` раз в секунду печатаются число сканов и количество
+занятых/свободных/неизвестных ячеек. Сравнение карт одной командой:
+
+```bash
+cd ~/navigator_ws
+./run_map_compare.sh          # 62 с
+./run_map_compare.sh 90       # 90 с
+```
+
+Результат — `results/result_map_compare.png` (карта по истинной позе, карта по
+оценке и карта различий) плюс IoU занятых ячеек и доля совпавших ячеек в консоли.
+Повторная отрисовка: `python3 tools/map_compare.py --replot`.
+
 ---
 
 ## 7. Картинки для отчёта (опционально)
@@ -242,8 +287,10 @@ python3 tools/visualize.py --replot
 | `colcon build` ведёт себя странно | запускать из корня `~/navigator_ws`, не из `src` |
 | RViz не открывается (Windows 10) | WSLg нет: установить VcXsrv/Xming и задать `export DISPLAY=$(ip route show default \| awk '{print $3}'):0.0` |
 | RViz падает с ошибкой OpenGL | `sudo apt install -y mesa-utils libgl1-mesa-dri` и перезапустить WSL (`wsl --shutdown`) |
-| После `Ctrl+C` остались процессы | `pkill -9 -f lib/navigator_sim` |
+| После `Ctrl+C` остались процессы | `pkill -9 -f lib/navigator_sim; pkill -9 -f lib/navigator_slam` |
 | `plot_data.npz`/PNG не создались | не установлены `python3-numpy` и `python3-matplotlib` — см. раздел 2 |
 | `ModuleNotFoundError: No module named 'numpy'` | не установлен `python3-numpy` — `sudo apt install -y python3-numpy` |
 | `Package 'navigator_localization' not found` | workspace не пересобран — `colcon build --symlink-install`, затем `source install/setup.bash` |
 | EKF не стартует | по умолчанию `use_localization:=false`; используйте `localization.launch.py` или `use_localization:=true` |
+| `/map/estimate` пустой или отсутствует | маппер не запущен или поза не найдена: `mapping.launch.py` (`pose_source:=estimate`/`both`) и непустой `/estimate/odom` |
+| В `map_compare.py` «no map on ...» | запущен `mapping.launch.py` без `pose_source:=both` |
