@@ -359,6 +359,11 @@ IoU по занятым ячейкам чувствителен к сдвигу:
 сглаживание `map_alpha`) и маркеры `/landmarks/markers`. Пустой `pose_topic`
 отключает карту и маркеры — так `landmark_node` работает внутри EKF-SLAM.
 
+Ориентир попадает в карту только после `min_hits` согласованных наблюдений в
+пределах `tentative_gate` (0.35 м): короткая дуга на угле стены описывается
+окружностью так же хорошо, как настоящая метка, и одиночные ложные срабатывания
+(≈1.7 % сканов) иначе закреплялись бы в карте навсегда.
+
 Проверка детектора (офлайн, 720 синтетических сканов по геометрии полигона):
 средняя ошибка положения относительно `world.LANDMARKS` 3 мм без шума,
 1.7 % ложных срабатываний с шумом лидара (σ = 0.02 м, bias = 0.01 м,
@@ -390,7 +395,10 @@ Sigma = cov(mu)                      # (2N+3) x (2N+3)
 - **инициализация ориентира** — обратная модель наблюдения, ковариация через
   `G·Σ·Gᵀ + M·R·Mᵀ`, диагональ не ниже `initial_landmark_std²`;
 - **ассоциация** — по **совместной** ковариации (блоки робота и ориентира
-  вместе с кросс-корреляциями), гейт χ² 99 %.
+  вместе с кросс-корреляциями), гейт χ² 99 %;
+- **подтверждение** — ориентир добавляется в состояние только после
+  `min_landmark_hits` (8) согласованных наблюдений: настоящая метка видна
+  сотни раз, ложное срабатывание на угле стены — единицы.
 
 Выходы: `/slam/odom`, `/slam/path`, `/slam/landmarks`, `/slam/markers`,
 `/slam/error`; TF не публикуется (истинная поза по-прежнему владеет
@@ -400,6 +408,10 @@ Sigma = cov(mu)                      # (2N+3) x (2N+3)
 ошибка позы в конце **3.4 см**, курса 0.004 рад, средняя ошибка ориентиров
 **3.4 мм**, число ориентиров равно числу настоящих (4) — повторное наблюдение
 после замкнутой траектории не создаёт дубликатов.
+
+Офлайн-прогон полной связки «реальный детектор → EKF-SLAM» (1136 синтетических
+сканов, два круга): ошибка позы 2.7 см в среднем, **4 ориентира** с ошибкой
+1.6–4.5 см, без фантомов на стенах.
 
 ```bash
 ros2 launch navigator_bringup slam.launch.py use_rviz:=false
@@ -421,9 +433,10 @@ ros2 topic echo --once /slam/landmarks
 | `outage_20_40` | все дальности `NaN` с 20-й по 40-ю секунду |
 | `anchors_wide` / `anchors_compact` | углы полигона / якоря у старта |
 
-Метрики: RMSE и максимум ошибки позы (`/estimate/error`), RMSE SLAM
-(`/slam/error`, если запущен), IoU занятых ячеек и среднее расстояние между
-картами `/map/estimate` и `/map/ground_truth`. Результаты:
+Метрики: RMSE и максимум ошибки позы (`/estimate/error`), IoU занятых ячеек и
+среднее расстояние между картами `/map/estimate` и `/map/ground_truth`.
+Точность EKF-SLAM проверяется отдельным запуском `slam.launch.py`
+(`/slam/error` и RMSE в логе `ekf_slam_node`), в сценарную таблицу она не входит. Результаты:
 `results/analysis/summary.md` (таблица + автоматические выводы),
 `results/analysis/summary.csv`, `results/analysis_rmse.png`,
 `results/analysis_maps.png`.
@@ -460,11 +473,12 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
   `max_range`, допуск по позе, частота публикации (этап 6).
 - `navigator_slam/config/landmarks.yaml` — пороги кластеризации (`jump_threshold`,
   `min/max_points`, `max_cluster_width`), допустимый радиус и residual,
-  `sigma_range`/`sigma_bearing`, гейт ассоциации, `map_alpha`, `max_landmarks`
-  (этап 7).
+  `sigma_range`/`sigma_bearing`, гейт ассоциации, `map_alpha`, `max_landmarks`,
+  подтверждение кандидатов (`min_hits`, `tentative_gate`) (этап 7).
 - `navigator_slam/config/ekf_slam.yaml` — начальная поза и σ, `Q`, σ СШП и якоря,
   `use_uwb`, `gate`, `sigma_range`/`sigma_bearing`, `initial_landmark_std`,
-  `max_landmarks`, частоты публикации (этап 8).
+  `max_landmarks`, подтверждение ориентиров (`min_landmark_hits`,
+  `tentative_gate`), частоты публикации (этап 8).
 - `navigator_sim/config/sensors.yaml` — одна секция на ноду (`uwb_model_node`,
   `lidar_model_node`) и параметры сценариев этапа 9: `anchors` (пусто = якоря
   полигона) и окно без СШП `outage_start_s`/`outage_end_s`.

@@ -51,6 +51,12 @@ landmark_node:
     # Exponential moving average weight of a new observation for a known id.
     map_alpha: 0.30
     max_landmarks: 100
+    # A candidate enters the map after `min_hits` consistent sightings within
+    # `tentative_gate` metres; single-scan false positives (wall corners) never
+    # reach this count. `max_tentative_tracks` caps the candidate buffer.
+    min_hits: 5
+    tentative_gate: 0.35
+    max_tentative_tracks: 200
 
     # Rate of /landmarks/map and /landmarks/markers [Hz].
     publish_rate_hz: 2.0

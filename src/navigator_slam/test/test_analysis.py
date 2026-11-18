@@ -88,7 +88,6 @@ def make_row(name, rmse_pos=0.10, iou=0.40, sensors=None, ekf=None,
         'name': name,
         'status': 'ok',
         'duration': 62.0,
-        'use_slam': False,
         'spec': {'sensors': sensors or {}, 'ekf': ekf or {}},
         'samples': samples,
         'rmse_x': rmse_pos / math.sqrt(2.0),
@@ -100,10 +99,6 @@ def make_row(name, rmse_pos=0.10, iou=0.40, sensors=None, ekf=None,
         'iou_occupied': iou,
         'mean_distance': 0.05,
         'max_distance': 0.15,
-        'slam_samples': 0,
-        'slam_rmse_pos': float('nan'),
-        'slam_rmse_yaw': float('nan'),
-        'slam_max_pos': float('nan'),
         'wall_time': 70.0,
     }
     row.update(extra)
@@ -454,7 +449,6 @@ class TestSummaryRendering(TempDirMixin, unittest.TestCase):
 
     def test_missing_metrics_become_not_available(self):
         row = make_row('broken', rmse_pos=float('nan'), iou=float('nan'))
-        row['slam_rmse_pos'] = float('nan')
         markdown = ANALYSIS.render_summary_markdown([row])
         self.assertIn('n/a', markdown)
         self.assert_no_nan_text(markdown)

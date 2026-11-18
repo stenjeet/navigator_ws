@@ -241,6 +241,27 @@ Tests (`test_analysis.py`, skip if matplotlib import fails): RMSE aggregation,
 scenario expansion/override merging, summary table formatting, and
 `--replot`-style rendering from a synthetic CSV.
 
+## Post-integration refinements
+
+- New candidates are confirmed before they enter a map: `min_hits` sightings for
+  the stage-7 tracker, `min_landmark_hits` for the EKF-SLAM state, both within
+  `tentative_gate` metres (`navigator_slam/tentative.py`). An offline run of the
+  real detector showed 263..414 sightings per real landmark and 1..5 per wall
+  corner, so the buffer removes the phantom landmarks without a detection
+  threshold that would also drop real ones.
+- `sensors.yaml` was split into one section per node (`uwb_model_node`,
+  `lidar_model_node`): the previous shared section never matched a node name and
+  was silently ignored.
+- `mapping.launch.py` forwards `sensors_params` / `ekf_params` to
+  `simulation.launch.py`, so scenario copies are passed as launch arguments (the
+  environment bridge used during development was removed).
+- The stage-9 table does not enable EKF-SLAM: the runner always starts
+  `mapping.launch.py`, so SLAM accuracy is measured by `slam.launch.py` and its
+  `/slam/error` instead of a scenario flag.
+- One lap of the square trajectory takes about 56 s (`4 x 4 m / 0.35 m/s +
+  4 x (pi/2) / 0.6 rad/s`); the default 62 s recording covers a full lap plus
+  margin.
+
 ## Integration order
 
 1. `feature/stage7-landmarks`, `feature/stage8-ekf-slam` and

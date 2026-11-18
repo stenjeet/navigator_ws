@@ -812,6 +812,97 @@ def robot_frame(point, pose):
 
 
 # ----------------------------------------------------------------------
+# Landmark confirmation
+# ----------------------------------------------------------------------
+class TestLandmarkConfirmation(unittest.TestCase):
+    """Candidates need several consistent sightings before they enter the state."""
+
+    LANDMARK = (4.0, 0.45)
+
+    @staticmethod
+    def observation(pose, point, scale=1.0):
+        dx = point[0] - pose[0]
+        dy = point[1] - pose[1]
+        return Observation(
+            range=math.hypot(dx, dy) + scale * 0.0,
+            bearing=wrap_angle(math.atan2(dy, dx) - pose[2]),
+            radius=0.09,
+            range_variance=0.01 ** 2,
+            bearing_variance=0.01 ** 2,
+        )
+
+    def test_candidate_needs_several_sightings(self):
+        slam = make_slam(min_landmark_hits=3)
+        observation = self.observation(START, self.LANDMARK)
+        self.assertIsNone(slam.confirm_observation(observation))
+        self.assertIsNone(slam.confirm_observation(observation))
+        self.assertEqual(slam.landmark_count, 0)
+        self.assertEqual(len(slam.tentative), 1)
+
+        new_id = slam.confirm_observation(observation)
+        self.assertEqual(new_id, 0)
+        self.assertEqual(slam.landmark_count, 1)
+        self.assertEqual(len(slam.tentative), 0)
+        np.testing.assert_allclose(
+            slam.landmark_position(new_id), self.LANDMARK, atol=0.02
+        )
+
+    def test_one_hit_creates_immediately(self):
+        slam = make_slam(min_landmark_hits=1)
+        new_id = slam.confirm_observation(self.observation(START, self.LANDMARK))
+        self.assertEqual(new_id, 0)
+        self.assertEqual(slam.landmark_count, 1)
+        self.assertEqual(len(slam.tentative), 0)
+
+    def test_scattered_sightings_do_not_confirm(self):
+        slam = make_slam(min_landmark_hits=3)
+        for step in range(6):
+            point = (4.0 + 1.5 * step, 0.45)
+            self.assertIsNone(
+                slam.confirm_observation(self.observation(START, point))
+            )
+        self.assertEqual(slam.landmark_count, 0)
+        self.assertGreaterEqual(len(slam.tentative), 6)
+
+    def test_candidates_do_not_consume_the_landmark_cap(self):
+        slam = make_slam(min_landmark_hits=5, max_landmarks=1)
+        for step in range(4):
+            slam.confirm_observation(
+                self.observation(START, (4.0 + 1.0 * step, 0.45))
+            )
+        self.assertEqual(slam.landmark_count, 0)
+
+        # A fresh candidate (far from the scattered ones) needs five sightings.
+        observation = self.observation(START, (0.45, 4.0))
+        for _ in range(4):
+            self.assertIsNone(slam.confirm_observation(observation))
+        self.assertEqual(slam.landmark_count, 0)
+        self.assertEqual(slam.confirm_observation(observation), 0)
+        self.assertEqual(slam.landmark_count, 1)
+
+    def test_process_observations_reports_new_ids(self):
+        slam = make_slam(min_landmark_hits=1)
+        observations = [
+            self.observation(START, self.LANDMARK),
+            self.observation(START, (0.45, 4.0)),
+        ]
+        associations, added = slam.process_observations(observations)
+        self.assertEqual(associations, [None, None])
+        self.assertEqual(sorted(added), [0, 1])
+        self.assertEqual(slam.landmark_count, 2)
+
+        associations, added = slam.process_observations(observations)
+        self.assertEqual(associations, [0, 1])
+        self.assertEqual(added, [])
+
+    def test_invalid_observation_is_ignored(self):
+        slam = make_slam(min_landmark_hits=1)
+        self.assertIsNone(slam.confirm_observation(Observation(float('nan'), 0.0)))
+        self.assertIsNone(slam.confirm_observation(Observation(-1.0, 0.0)))
+
+
+
+# ----------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------
 @unittest.skipIf(world is None, 'navigator_sim is not on PYTHONPATH')

@@ -66,6 +66,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from navigator_slam.tentative import TentativeTracks
+
 ROBOT_DIM = 3
 LANDMARK_DIM = 2
 
@@ -124,6 +126,9 @@ class EKFSLAM:
         initial_landmark_std=0.10,
         max_landmarks=50,
         gate=CHI2_2DOF_99,
+        min_landmark_hits=8,
+        tentative_gate=0.35,
+        max_tentative_tracks=200,
     ):
         pose = np.array(initial_pose, dtype=float).reshape(ROBOT_DIM)
         if initial_covariance is None:
@@ -152,6 +157,13 @@ class EKFSLAM:
         self.gate = float(gate)
         #: Landmark ids in state order: block ``k`` is ``mu[3 + 2k : 5 + 2k]``.
         self.ids = []
+        #: Candidates that need ``min_landmark_hits`` sightings before they
+        #: enter the state; wall corners would otherwise become phantoms.
+        self.tentative = TentativeTracks(
+            gate=tentative_gate,
+            min_hits=min_landmark_hits,
+            max_tracks=max_tentative_tracks,
+        )
 
     # ------------------------------------------------------------------
     # State accessors
@@ -410,7 +422,7 @@ class EKFSLAM:
                 except np.linalg.LinAlgError:  # pragma: no cover - degenerate S
                     continue
                 distance = float(innovation @ solved)
-                if math.isfinite(distance) and distance < gate:
+                if math.isfinite(distance) and distance <= gate:
                     candidates.append((distance, obs_index, landmark_id))
 
         candidates.sort(key=lambda item: item[0])
@@ -465,17 +477,18 @@ class EKFSLAM:
         self._correct(innovation, H, R)
         return self.mu.copy(), self.Sigma.copy()
 
-    def add_landmark(self, observation, R=None):
+    def add_landmark(self, observation, R=None, position=None):
         """Initialise a new landmark from an unmatched observation.
 
         ``R`` is the optional ``2x2`` polar measurement covariance; by default
         it is built from ``sigma_range``/``sigma_bearing`` and the observation's
-        own variances (see :meth:`measurement_covariance`). The diagonal of the
-        new block is floored by ``initial_landmark_std**2``, so a single
-        observation cannot make a landmark overconfident even when the detector
-        reports a tiny variance. Returns the new id, or ``None`` when the
-        observation is invalid or the state already holds ``max_landmarks``
-        landmarks.
+        own variances (see :meth:`measurement_covariance`). ``position``
+        overrides the landmark position (used by the confirmation buffer, which
+        averages several sightings). The diagonal of the new block is floored by
+        ``initial_landmark_std**2``, so a single observation cannot make a
+        landmark overconfident even when the detector reports a tiny variance.
+        Returns the new id, or ``None`` when the observation is invalid or the
+        state already holds ``max_landmarks`` landmarks.
         """
         if not observation.is_finite():
             return None
@@ -488,8 +501,11 @@ class EKFSLAM:
         distance = float(observation.range)
 
         # Inverse observation model: position of the landmark in the map frame.
-        lx = x + distance * cos_psi
-        ly = y + distance * sin_psi
+        if position is None:
+            lx = x + distance * cos_psi
+            ly = y + distance * sin_psi
+        else:
+            lx, ly = (float(value) for value in position)
 
         # Jacobian w.r.t. the robot pose and the polar measurement noise.
         G = np.array([
@@ -528,6 +544,50 @@ class EKFSLAM:
         self._symmetrize()
         self._check_finite()
         return new_id
+
+    def confirm_observation(self, observation):
+        """Feed an unmatched observation to the confirmation buffer.
+
+        Returns the new landmark id once the candidate has been seen
+        ``min_landmark_hits`` times; ``None`` while it is still tentative, when
+        the observation is invalid or when the state is full. With
+        ``min_landmark_hits == 1`` the landmark is created immediately.
+        """
+        if not observation.is_finite():
+            return None
+        if self.landmark_count >= self.max_landmarks:
+            return None
+        pose_x, pose_y, pose_theta = self.mu[:ROBOT_DIM]
+        psi = float(pose_theta) + float(observation.bearing)
+        candidate_x = pose_x + float(observation.range) * math.cos(psi)
+        candidate_y = pose_y + float(observation.range) * math.sin(psi)
+
+        confirmed, landmark_x, landmark_y = self.tentative.update(
+            candidate_x, candidate_y
+        )
+        if not confirmed:
+            return None
+        return self.add_landmark(
+            observation, position=(landmark_x, landmark_y)
+        )
+
+    def process_observations(self, observations):
+        """Associate, update and initialise landmarks in one step.
+
+        Returns ``(associations, added_ids)``: the association of every
+        observation (``None`` when unmatched) and the ids of the landmarks that
+        were confirmed during this scan.
+        """
+        associations = self.associate(observations)
+        self.update_landmarks(observations, associations)
+        added = []
+        for observation, association in zip(observations, associations):
+            if association is not None:
+                continue
+            new_id = self.confirm_observation(observation)
+            if new_id is not None:
+                added.append(new_id)
+        return associations, added
 
     # ------------------------------------------------------------------
     # Internals

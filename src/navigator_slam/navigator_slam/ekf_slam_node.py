@@ -40,6 +40,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from navigator_interfaces.msg import Landmark, LandmarkMap, LandmarkObservationArray
 from navigator_slam.ekf_slam import EKFSLAM, Observation, wrap_angle
+from navigator_slam.pose_utils import quaternion_to_yaw
 
 #: Warn when a landmark observation reaches the filter later than this [s].
 OBSERVATION_AGE_WARN = 0.5
@@ -66,13 +67,6 @@ def yaw_to_quaternion(yaw):
     q.z = math.sin(yaw * 0.5)
     q.w = math.cos(yaw * 0.5)
     return q
-
-
-def quaternion_to_yaw(q):
-    return math.atan2(
-        2.0 * (q.w * q.z + q.x * q.y),
-        1.0 - 2.0 * (q.y * q.y + q.z * q.z),
-    )
 
 
 class EkfSlamNode(Node):
@@ -122,6 +116,12 @@ class EkfSlamNode(Node):
         self.declare_parameter('sigma_bearing', 0.05)
         self.declare_parameter('initial_landmark_std', 0.10)
         self.declare_parameter('max_landmarks', 50)
+        # A candidate landmark enters the state only after this many
+        # consistent sightings within tentative_gate metres (wall corners
+        # otherwise become phantom landmarks).
+        self.declare_parameter('min_landmark_hits', 8)
+        self.declare_parameter('tentative_gate', 0.35)
+        self.declare_parameter('max_tentative_tracks', 200)
 
         # Publishing.
         self.declare_parameter('path_max_poses', 5000)
@@ -168,6 +168,13 @@ class EkfSlamNode(Node):
             ),
             max_landmarks=int(self.get_parameter('max_landmarks').value),
             gate=self.gate,
+            min_landmark_hits=int(
+                self.get_parameter('min_landmark_hits').value
+            ),
+            tentative_gate=float(self.get_parameter('tentative_gate').value),
+            max_tentative_tracks=int(
+                self.get_parameter('max_tentative_tracks').value
+            ),
         )
         self.Q = [
             [q_x, 0.0, 0.0],
@@ -308,29 +315,27 @@ class EkfSlamNode(Node):
             return
 
         self.observation_count += len(observations)
-        associations = self.slam.associate(observations, self.gate)
-        self.slam.update_landmarks(observations, associations)
-
-        for observation, association in zip(observations, associations):
-            if association is not None:
-                self.matched_count += 1
-                continue
-            new_id = self.slam.add_landmark(observation)
-            if new_id is not None:
-                self.added_count += 1
-                self.get_logger().debug(
-                    'new landmark %d from a %.2f m / %.3f rad observation'
-                    % (new_id, observation.range, observation.bearing)
+        associations, added = self.slam.process_observations(observations)
+        self.matched_count += sum(
+            1 for association in associations if association is not None
+        )
+        self.added_count += len(added)
+        for new_id in added:
+            self.get_logger().debug(
+                'new landmark %d confirmed (map: %d landmarks, %d candidates)'
+                % (new_id, self.slam.landmark_count, len(self.slam.tentative))
+            )
+        if self.slam.landmark_count >= self.slam.max_landmarks:
+            # The state is full: candidates are dropped until a slot frees up.
+            self.dropped_count += len(observations) - sum(
+                1 for association in associations if association is not None
+            ) - len(added)
+            if not self.cap_warned:
+                self.cap_warned = True
+                self.get_logger().warn(
+                    'landmark cap reached (%d): new landmarks are ignored'
+                    % self.slam.max_landmarks
                 )
-            elif self.slam.landmark_count >= self.slam.max_landmarks:
-                # The state is full: keep the map but stop growing it.
-                self.dropped_count += 1
-                if not self.cap_warned:
-                    self.cap_warned = True
-                    self.get_logger().warn(
-                        'landmark cap reached (%d): new landmarks are ignored'
-                        % self.slam.max_landmarks
-                    )
 
     # ------------------------------------------------------------------
     # Prediction and publishing

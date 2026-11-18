@@ -3,9 +3,10 @@
 
 Every scenario launches ``navigator_bringup/mapping.launch.py`` headless with
 its own copies of ``sensors.yaml`` and ``ekf.yaml``, records ``/estimate/error``
-(and ``/slam/error`` when stage 8 runs) plus the final ``/map/ground_truth`` and
-``/map/estimate`` grids, and aggregates the run into one summary and two
-figures.
+plus the final ``/map/ground_truth`` and ``/map/estimate`` grids, and aggregates
+the run into one summary and two figures. Stage-8 EKF-SLAM is validated by its
+own launch (``slam.launch.py``) and reports ``/slam/error``; the scenario table
+measures the stage-5 localization and the stage-6 maps.
 
 Built-in scenario table (default profile, 62 s of simulation per scenario; the
 values are starting points for the report and can be changed in a YAML file
@@ -94,7 +95,6 @@ NAN = float('nan')
 
 ERROR_TOPICS = {
     'estimate': '/estimate/error',
-    'slam': '/slam/error',
 }
 MAP_TOPICS = {
     'ground_truth': '/map/ground_truth',
@@ -141,10 +141,6 @@ METRIC_KEYS = (
     'iou_occupied',
     'mean_distance',
     'max_distance',
-    'slam_samples',
-    'slam_rmse_pos',
-    'slam_rmse_yaw',
-    'slam_max_pos',
     'wall_time',
 )
 
@@ -267,7 +263,6 @@ def build_scenarios(quick=False, duration=None, table=None):
             'duration': float(item.get('duration', default_duration)),
             'sensors': dict(item.get('sensors') or {}),
             'ekf': dict(item.get('ekf') or {}),
-            'use_slam': bool(item.get('use_slam', False)),
         }
         if duration is not None:
             scenario['duration'] = float(duration)
@@ -464,7 +459,7 @@ def aggregate_errors(samples):
 
     Rows with a non-finite component are dropped, so a partially broken error
     stream does not poison the aggregate. Yaw is in radians, as published by
-    ``/estimate/error`` and ``/slam/error``.
+    ``/estimate/error``.
     """
     values = np.asarray(
         np.empty((0, 3)) if samples is None else samples, dtype=float
@@ -529,19 +524,12 @@ def scenario_row(scenario, recording, wall_time=None, log_path=None):
         'name': scenario['name'],
         'status': 'ok',
         'duration': float(scenario['duration']),
-        'use_slam': bool(scenario.get('use_slam', False)),
         'spec': {
             'sensors': dict(scenario.get('sensors') or {}),
             'ekf': dict(scenario.get('ekf') or {}),
         },
     }
     row.update(aggregate_errors(recording.get('error')))
-
-    slam = aggregate_errors(recording.get('slam_error'))
-    row['slam_samples'] = slam['samples']
-    row['slam_rmse_pos'] = slam['rmse_pos']
-    row['slam_rmse_yaw'] = slam['rmse_yaw']
-    row['slam_max_pos'] = slam['max_pos']
 
     row.update(map_metrics(
         recording.get('map_ground_truth'),
@@ -597,13 +585,13 @@ def message_to_grid(message):
     return data, float(message.info.resolution)
 
 
-def record_scenario(duration, process, log_path, expect_slam=False,
+def record_scenario(duration, process, log_path,
                     startup_timeout=DEFAULT_STARTUP_TIMEOUT):
     """Record one scenario while the launch subprocess runs.
 
     Waits for the first ``/estimate/error`` sample (a clear failure otherwise),
-    then collects ``duration`` seconds of ``/estimate/error``, ``/slam/error``
-    and the final ``/map/ground_truth`` + ``/map/estimate`` grids.
+    then collects ``duration`` seconds of ``/estimate/error`` and the final
+    ``/map/ground_truth`` + ``/map/estimate`` grids.
     """
     try:
         import rclpy
@@ -618,7 +606,6 @@ def record_scenario(duration, process, log_path, expect_slam=False,
         )
 
     estimate = []
-    slam = []
     grids = {}
 
     rclpy.init()
@@ -641,10 +628,6 @@ def record_scenario(duration, process, log_path, expect_slam=False,
         node.create_subscription(
             Vector3Stamped, ERROR_TOPICS['estimate'],
             error_callback(estimate), 50,
-        )
-        node.create_subscription(
-            Vector3Stamped, ERROR_TOPICS['slam'],
-            error_callback(slam), 50,
         )
         for key, topic in MAP_TOPICS.items():
             node.create_subscription(
@@ -703,15 +686,8 @@ def record_scenario(duration, process, log_path, expect_slam=False,
             'unavailable' % ', '.join(MAP_TOPICS.values()), flush=True,
         )
 
-    if expect_slam and not slam:
-        print(
-            '    warning: no message on %s although the scenario expects SLAM'
-            % ERROR_TOPICS['slam'], flush=True,
-        )
-
     return {
         'error': np.asarray(estimate, dtype=float).reshape(-1, 3),
-        'slam_error': np.asarray(slam, dtype=float).reshape(-1, 3),
         'map_ground_truth': ground_truth,
         'map_estimate': estimate_map,
         'resolution': resolution,
@@ -812,7 +788,6 @@ def run_one_scenario(scenario, args, config_dir, sensor_base, ekf_document):
                 scenario['duration'],
                 process,
                 log_path,
-                expect_slam=scenario.get('use_slam', False),
                 startup_timeout=getattr(
                     args, 'startup_timeout', DEFAULT_STARTUP_TIMEOUT
                 ),
@@ -870,7 +845,6 @@ def format_row_line(row):
             format_int(row.get('samples')),
             format_value(row.get('iou_occupied')),
             format_value(row.get('mean_distance')),
-            format_value(row.get('slam_rmse_pos')),
         )
     )
     if row.get('status') == 'failed':
@@ -892,7 +866,6 @@ TABLE_COLUMNS = (
     ('max \\|e\\| [m]', lambda row: format_value(row.get('max_pos'))),
     ('IoU occupied', lambda row: format_value(row.get('iou_occupied'))),
     ('Mean dist [m]', lambda row: format_value(row.get('mean_distance'))),
-    ('SLAM RMSE [m]', lambda row: format_value(row.get('slam_rmse_pos'))),
 )
 
 SUMMARY_NOTES = (
@@ -1102,20 +1075,6 @@ def build_findings(rows):
             'unavailable.'
         )
 
-    slam = [
-        row for row in rows if finite_number(row.get('slam_rmse_pos')) is not None
-    ]
-    if slam:
-        sentences.append(
-            'With EKF-SLAM enabled the position RMSE is %.3f..%.3f m (%d of %d '
-            'scenarios).'
-            % (
-                min(row['slam_rmse_pos'] for row in slam),
-                max(row['slam_rmse_pos'] for row in slam),
-                len(slam), len(rows),
-            )
-        )
-
     return ' '.join(sentences)
 
 
@@ -1150,9 +1109,6 @@ CSV_COLUMNS = (
     ('iou_occupied', lambda row: format_csv(row.get('iou_occupied'))),
     ('mean_distance_m', lambda row: format_csv(row.get('mean_distance'))),
     ('max_distance_m', lambda row: format_csv(row.get('max_distance'))),
-    ('slam_samples', lambda row: format_csv(row.get('slam_samples'), '%.0f')),
-    ('slam_rmse_pos_m', lambda row: format_csv(row.get('slam_rmse_pos'))),
-    ('slam_rmse_yaw_deg', lambda row: format_csv(yaw_degrees(row.get('slam_rmse_yaw')))),
     ('wall_time_s', lambda row: format_csv(row.get('wall_time'), '%.1f')),
 )
 
@@ -1332,9 +1288,6 @@ def save_dataset(path, rows):
         metrics=metrics,
         metric_keys=np.array(METRIC_KEYS, dtype=str),
         statuses=np.array([str(row.get('status', 'ok')) for row in rows], dtype=str),
-        use_slam=np.array(
-            [bool(row.get('use_slam', False)) for row in rows], dtype=bool
-        ),
         specs=np.array(
             [json.dumps(row.get('spec') or {}, sort_keys=True) for row in rows],
             dtype=str,
@@ -1360,7 +1313,6 @@ def load_dataset(path):
             [str(status) for status in data['statuses']]
             if 'statuses' in data else ['ok'] * len(names)
         )
-        use_slam = [bool(value) for value in data['use_slam']]
         specs = [json.loads(str(spec) or '{}') for spec in data['specs']]
 
     rows = []
@@ -1368,12 +1320,11 @@ def load_dataset(path):
         row = {
             'name': name,
             'status': statuses[index],
-            'use_slam': use_slam[index],
             'spec': specs[index],
         }
         for column, key in enumerate(keys):
             row[key] = float(metrics[index, column])
-        for key in ('samples', 'slam_samples'):
+        for key in ('samples',):
             number = finite_number(row.get(key))
             row[key] = int(round(number)) if number is not None else 0
         rows.append(row)

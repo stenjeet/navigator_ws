@@ -53,6 +53,15 @@ ekf_slam_node:
     initial_landmark_std: 0.10
     max_landmarks: 50
 
+    # Confirmation of new landmarks: a candidate enters the joint state only
+    # after `min_landmark_hits` consistent sightings within `tentative_gate`
+    # metres (a real landmark is seen hundreds of times, a wall corner that the
+    # detector fits as a small circle only a handful). Candidates do not count
+    # against max_landmarks; `max_tentative_tracks` caps their buffer.
+    min_landmark_hits: 8
+    tentative_gate: 0.35
+    max_tentative_tracks: 200
+
     # Publishing: /slam/path keeps the last path_max_poses poses and every
     # path_every_n-th prediction is appended; the landmark map and the markers
     # are published at publish_rate_hz; publish_error enables /slam/error and

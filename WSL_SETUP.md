@@ -274,7 +274,7 @@ cd ~/navigator_ws
 ```bash
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
-colcon test --packages-select navigator_slam && colcon test-result --verbose   # 154 теста
+colcon test --packages-select navigator_slam && colcon test-result --verbose   # 174 теста
 ```
 
 Запуск: `landmarks.launch.py` поднимает симуляцию + EKF + `landmark_node`

@@ -49,25 +49,11 @@ from navigator_slam.landmark_detection import (
     associate_observations,
     extract_landmarks,
 )
-
-#: Indices of the 3x3 pose block inside a 6x6 row-major pose covariance.
-POSE_COVARIANCE_INDICES = (0, 1, 2, 6, 7, 8, 30, 31, 35)
+from navigator_slam.pose_utils import pose_covariance, quaternion_to_yaw
+from navigator_slam.tentative import TentativeTracks
 
 #: Height of the landmark cylinders in the visualization [m].
 MARKER_HEIGHT = 0.45
-
-
-def quaternion_to_yaw(q):
-    return math.atan2(
-        2.0 * (q.w * q.z + q.x * q.y),
-        1.0 - 2.0 * (q.y * q.y + q.z * q.z),
-    )
-
-
-def pose_covariance(covariance):
-    """3x3 ``[x, y, yaw]`` block of a row-major 6x6 pose covariance."""
-    values = [float(covariance[index]) for index in POSE_COVARIANCE_INDICES]
-    return np.asarray(values, dtype=float).reshape(3, 3)
 
 
 def rotate(angle, x, y):
@@ -105,6 +91,12 @@ class LandmarkNode(Node):
         self.declare_parameter('gate', 9.21)
         self.declare_parameter('map_alpha', 0.30)
         self.declare_parameter('max_landmarks', 100)
+        # A candidate enters the map only after this many consistent sightings
+        # within tentative_gate metres; a single scan occasionally reports a
+        # wall corner as a small circle.
+        self.declare_parameter('min_hits', 5)
+        self.declare_parameter('tentative_gate', 0.35)
+        self.declare_parameter('max_tentative_tracks', 200)
         self.declare_parameter('publish_rate_hz', 2.0)
 
         self.scan_topic = str(self.get_parameter('scan_topic').value)
@@ -139,6 +131,13 @@ class LandmarkNode(Node):
         self.map_alpha = float(self.get_parameter('map_alpha').value)
         self.max_landmarks = max(
             1, int(self.get_parameter('max_landmarks').value)
+        )
+        self.tentative = TentativeTracks(
+            gate=float(self.get_parameter('tentative_gate').value),
+            min_hits=int(self.get_parameter('min_hits').value),
+            max_tracks=int(
+                self.get_parameter('max_tentative_tracks').value
+            ),
         )
         publish_rate = float(self.get_parameter('publish_rate_hz').value)
 
@@ -257,9 +256,17 @@ class LandmarkNode(Node):
         )
         covariance = jacobian @ measurement_noise @ jacobian.T
 
-        # The pose itself is uncertain too: rotate its xy block into the map.
-        pose_xy = self.pose_covariance[:2, :2]
-        covariance = covariance + rotation @ pose_xy @ rotation.T
+        # The pose itself is uncertain too: the map position depends on
+        # (x, y, yaw) through the rotated polar offset, so the full 3x3 pose
+        # block is projected with the corresponding Jacobian.
+        pose_jacobian = np.array(
+            [
+                [1.0, 0.0, -offset_y],
+                [0.0, 1.0, offset_x],
+            ],
+            dtype=float,
+        )
+        covariance = covariance + pose_jacobian @ self.pose_covariance @ pose_jacobian.T
         covariance = 0.5 * (covariance + covariance.T)
         return float(x + offset_x), float(y + offset_y), covariance
 
@@ -278,6 +285,9 @@ class LandmarkNode(Node):
         for observation, landmark_id in zip(observations, associations):
             map_x, map_y, covariance = self.observation_to_map(observation)
             if landmark_id is None:
+                confirmed, map_x, map_y = self.tentative.update(map_x, map_y)
+                if not confirmed:
+                    continue
                 if len(self.landmarks) >= self.max_landmarks:
                     continue
                 landmark_id = self.next_id
