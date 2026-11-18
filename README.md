@@ -177,8 +177,8 @@ ros2 topic echo --once /estimate/error     # ошибка оценки (этап
 
 Выходы: `/estimate/odom`, `/estimate/path`, `/estimate/error`. Узел **не**
 публикует TF `odom → base_footprint` (это делает `motion_node`), чтобы не было
-конфликта; для визуализации добавьте в RViz отображение `/estimate/odom` или
-`/estimate/path`.
+конфликта; дисплеи `/estimate/odom` и `/estimate/path` уже добавлены в
+`navigator.rviz` (синий цвет).
 
 Важное ограничение: одна СШП-метка в статике задаёт только свою позицию,
 поэтому **курс по дальностям не наблюдается** (якобиан ранга 2). Курс
@@ -256,8 +256,8 @@ python3 tools/visualize.py --replot
 ## RViz
 
 `navigator_description/config/navigator.rviz` задаёт вид сверху: модель робота, TF,
-траекторию, маркеры полигона и два лидарных скана (`/scan_ideal`, `/scan_noisy`),
-Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
+истинную траекторию и оценку EKF (`/estimate/odom`, `/estimate/path`), маркеры
+полигона и два лидарных скана (`/scan_ideal`, `/scan_noisy`), Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
 можно снимать скриншоты через виртуальный дисплей:
 
 ```bash
