@@ -434,6 +434,11 @@ class EKFSLAM:
         are ignored, so unmatched observations must be passed to
         :meth:`add_landmark` instead.
         """
+        if len(associations) != len(observations):
+            raise ValueError(
+                'expected %d associations, got %d'
+                % (len(observations), len(associations))
+            )
         pairs = [
             (observation, association)
             for observation, association in zip(observations, associations)
@@ -465,9 +470,12 @@ class EKFSLAM:
 
         ``R`` is the optional ``2x2`` polar measurement covariance; by default
         it is built from ``sigma_range``/``sigma_bearing`` and the observation's
-        own variances (see :meth:`measurement_covariance`). Returns the new id,
-        or ``None`` when the observation is invalid or the state already holds
-        ``max_landmarks`` landmarks.
+        own variances (see :meth:`measurement_covariance`). The diagonal of the
+        new block is floored by ``initial_landmark_std**2``, so a single
+        observation cannot make a landmark overconfident even when the detector
+        reports a tiny variance. Returns the new id, or ``None`` when the
+        observation is invalid or the state already holds ``max_landmarks``
+        landmarks.
         """
         if not observation.is_finite():
             return None

@@ -598,6 +598,12 @@ class TestLandmarkUpdate(unittest.TestCase):
         )
         self.assertAlmostEqual(negative[0, 0], SIGMA_RANGE ** 2)
 
+    def test_association_length_must_match(self):
+        slam = make_slam()
+        slam.add_landmark(Observation(range=2.0, bearing=0.0))
+        with self.assertRaises(ValueError):
+            slam.update_landmarks([Observation(range=2.0, bearing=0.0)], [])
+
     def test_invalid_observation_is_not_associated(self):
         slam = make_slam()
         slam.add_landmark(Observation(range=2.0, bearing=0.0))
