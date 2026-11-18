@@ -159,10 +159,14 @@ src/navigator_bringup/launch/slam.launch.py
 - `add_landmark(observation, R)`: inverse observation model, initial position
   from the robot pose, covariance from `G Sigma G^T + G R G^T` with the landmark
   rows filled.
-- `associate(observations, gate)`: reuse
-  `navigator_slam.landmark_detection.associate_observations` with the current
-  `Sigma` and predicted landmark positions; import it at module level (stage 7
-  is merged before stage 8 is developed).
+- `associate(observations, gate)`: implemented inside `ekf_slam.py` over the
+  **joint** covariance (robot and landmark blocks including their
+  cross-correlations). This is stricter than the stage-7 tracker helper
+  `navigator_slam.landmark_detection.associate_observations`, which sees the
+  pose and landmark covariances separately. **Do not import any stage-7 module**:
+  stage 8 is developed in parallel and must be standalone; the node converts
+  `navigator_interfaces/LandmarkObservation` into a local plain dataclass
+  defined in `ekf_slam.py`.
 - `ekf_slam_node` (entry point `ekf_slam_node`, node name `ekf_slam_node`):
   predict from `/cmd_vel` at `predict_rate_hz`; on
   `/landmarks/observations` update/add; on `/uwb/noisy_ranges` update (parameter
@@ -239,9 +243,12 @@ scenario expansion/override merging, summary table formatting, and
 
 ## Integration order
 
-1. `feature/stage7-landmarks` is merged first.
-2. `feature/stage8-ekf-slam` is rebased/merged on top (it imports stage 7).
-3. `feature/stage9-analysis` is merged last (it touches `simulation.launch.py`
-   and `uwb_model_node.py`).
-4. Central documentation (`README.md`, `WSL_SETUP.md`, `PLAN.md`, RViz displays)
+1. `feature/stage7-landmarks`, `feature/stage8-ekf-slam` and
+   `feature/stage9-analysis` are developed in parallel from this scaffold
+   commit. Stage 7 and stage 8 do not share code: they agree only on the
+   message contract, and `slam.launch.py` starts the stage-7 `landmark_node`
+   together with the stage-8 `ekf_slam_node` at runtime.
+2. Merge order: stage 7, then stage 8, then stage 9 (stage 9 touches
+   `simulation.launch.py` and `uwb_model_node.py`; the other two only add files).
+3. Central documentation (`README.md`, `WSL_SETUP.md`, `PLAN.md`, RViz displays)
    is updated after the merge, not in stage branches.
