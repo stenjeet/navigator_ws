@@ -6,6 +6,13 @@ bias, Gaussian noise and independent Bernoulli dropouts. Ideal and noisy arrays
 are published separately so that the noisy stream can be compared against the
 reference.
 
+Scenario hooks (stage 9, defaults reproduce the nominal model exactly):
+
+    anchors          flat x, y, z triples; an empty list means world.UWB_ANCHORS
+    outage_start_s   start of a full outage window on the node clock [s]
+    outage_end_s     end of the window; every range is NaN inside it and
+                     ``0.0 / 0.0`` disables the outage
+
 Outputs:
     /uwb/ideal_ranges   std_msgs/Float32MultiArray   [A1, A2, A3, A4]
     /uwb/noisy_ranges   std_msgs/Float32MultiArray   NaN marks a dropout
@@ -36,6 +43,12 @@ class UwbModelNode(Node):
         self.declare_parameter('uwb_dropout_probability', 0.03)
         self.declare_parameter('uwb_biases', [0.02, -0.03, 0.04, 0.01])
         self.declare_parameter('uwb_rate_hz', 10.0)
+        # Empty list = the anchors of the report polygon (world.UWB_ANCHORS).
+        self.declare_parameter('anchors', [])
+        # UWB outage window [s] on the node clock, relative to the first timer
+        # callback; 0.0 / 0.0 disables it.
+        self.declare_parameter('outage_start_s', 0.0)
+        self.declare_parameter('outage_end_s', 0.0)
 
         seed = int(self.get_parameter('random_seed').value)
         self.sigma = float(self.get_parameter('uwb_sigma').value)
@@ -46,8 +59,12 @@ class UwbModelNode(Node):
         # Reproducible RNG (report section 4.4).
         self.rng = random.Random(seed)
 
-        self.anchors = world.UWB_ANCHORS
+        self.anchors = self.parse_anchors()
         self.tag_offset = world.UWB_TAG_OFFSET
+
+        self.outage_start_s = float(self.get_parameter('outage_start_s').value)
+        self.outage_end_s = float(self.get_parameter('outage_end_s').value)
+        self.first_callback_time = None
 
         if len(self.biases) != len(self.anchors):
             self.get_logger().warn(
@@ -71,7 +88,48 @@ class UwbModelNode(Node):
         period = 1.0 / rate_hz
         self.timer = self.create_timer(period, self.timer_callback)
         self.publish_anchors()
-        self.get_logger().info('uwb_model_node: rate %.1f Hz, seed %d' % (rate_hz, seed))
+        self.get_logger().info(
+            'uwb_model_node: rate %.1f Hz, seed %d, %d anchors, outage %s'
+            % (
+                rate_hz,
+                seed,
+                len(self.anchors),
+                'off' if not self.outage_enabled()
+                else '%.1f..%.1f s' % (self.outage_start_s, self.outage_end_s),
+            )
+        )
+
+    def parse_anchors(self):
+        """Anchors from the ``anchors`` parameter, or the polygon defaults."""
+        flat = [float(value) for value in self.get_parameter('anchors').value]
+        if not flat:
+            return world.UWB_ANCHORS
+        if len(flat) % 3 != 0:
+            raise ValueError(
+                'anchors must be a flat list of x, y, z triples, got %d values'
+                % len(flat)
+            )
+        return [
+            ('A%d' % (index + 1), flat[index], flat[index + 1], flat[index + 2])
+            for index in range(0, len(flat), 3)
+        ]
+
+    def outage_enabled(self):
+        """True when the configured window is a valid, non-empty interval."""
+        return (
+            math.isfinite(self.outage_start_s)
+            and math.isfinite(self.outage_end_s)
+            and self.outage_end_s > self.outage_start_s
+        )
+
+    def in_outage(self):
+        """True while the node clock is inside the configured outage window."""
+        if not self.outage_enabled() or self.first_callback_time is None:
+            return False
+        elapsed = (
+            self.get_clock().now() - self.first_callback_time
+        ).nanoseconds * 1e-9
+        return self.outage_start_s <= elapsed < self.outage_end_s
 
     def odom_callback(self, msg):
         self.x = msg.pose.pose.position.x
@@ -91,12 +149,20 @@ class UwbModelNode(Node):
         return x_tag, y_tag, self.tag_offset[2]
 
     def timer_callback(self):
+        # The outage window is relative to the first callback, so it does not
+        # depend on how long the node took to receive the first pose.
+        if self.first_callback_time is None:
+            self.first_callback_time = self.get_clock().now()
+
         if not self.have_pose:
             return
 
         x_tag, y_tag, z_tag = self.tag_position()
         ideal = Float32MultiArray()
         noisy = Float32MultiArray()
+        # Keep the RNG call order identical whether or not the outage is
+        # active, so only the NaN pattern differs between the scenarios.
+        outage = self.in_outage()
 
         for i, (name, ax, ay, az) in enumerate(self.anchors):
             d = math.sqrt(
@@ -109,7 +175,7 @@ class UwbModelNode(Node):
             else:
                 bias = self.biases[i] if i < len(self.biases) else 0.0
                 noise = self.rng.gauss(0.0, self.sigma)
-                noisy.data.append(float(d + bias + noise))
+                noisy.data.append(NAN if outage else float(d + bias + noise))
 
         ideal.layout.dim = []
         noisy.layout.dim = []
