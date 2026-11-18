@@ -1,0 +1,56 @@
+landmark_node:
+  ros__parameters:
+    # Data sources and sinks.
+    scan_topic: /scan_noisy
+    # Pose used for the landmark map and the markers; leave empty to publish
+    # raw base-frame observations only (that is what the joint EKF-SLAM wants).
+    pose_topic: /estimate/odom
+    observation_topic: /landmarks/observations
+    map_topic: /landmarks/map
+    marker_topic: /landmarks/markers
+
+    # Observations are pose-free: their header frame is the robot body frame,
+    # the landmark map is expressed in the map frame.
+    frame_id: base_footprint
+    map_frame_id: map
+
+    # Lidar mounting offset in base_footprint (matches world.LIDAR_OFFSET):
+    # observations compensate it, so range/bearing refer to the robot origin.
+    lidar_offset: [0.18, 0.0, 0.34]
+
+    # --- Clustering ---
+    # Adaptive range-jump threshold [m]: metric floor of the jump plus the
+    # tangential step of the scan at the mean cluster range.
+    jump_threshold: 0.15
+    # A landmark is a short arc, so very few beams are allowed per cluster.
+    min_points: 3
+    max_points: 25
+    # Physical width limit of a cluster [m]; the 0.09 m landmarks can never be
+    # wider than 2 * 0.09 = 0.18 m, so wider clusters are walls/obstacles.
+    max_cluster_width: 0.20
+
+    # --- Circle test ---
+    # Admissible landmark radius [m]: the polygon landmarks have r = 0.09 m,
+    # the big cylinders r = 0.35 m and 0.45 m must stay outside this window.
+    radius_min: 0.04
+    radius_max: 0.25
+    # Largest radial RMS residual of an accepted least-squares fit [m].
+    max_residual: 0.05
+
+    # --- Sensor model ---
+    # Beams outside [min_range, max_range] are ignored [m].
+    max_range: 8.0
+    min_range: 0.12
+    # Lidar noise used by the observation covariance [m, rad].
+    sigma_range: 0.02
+    sigma_bearing: 0.02
+
+    # --- Association and map ---
+    # Chi-square gate for the 2-dof Mahalanobis distance (9.21 = 99%).
+    gate: 9.21
+    # Exponential moving average weight of a new observation for a known id.
+    map_alpha: 0.30
+    max_landmarks: 100
+
+    # Rate of /landmarks/map and /landmarks/markers [Hz].
+    publish_rate_hz: 2.0
