@@ -7,6 +7,7 @@ ray-casting model stay consistent.
 """
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
@@ -109,11 +110,15 @@ class PolygonMarkersNode(Node):
         array = MarkerArray()
         marker_id = 0
 
-        # Floor
-        array.markers.append(
-            self.make_box(marker_id, 4.0, 4.0, 8.0, 8.0, 0.05,
-                          0.88, 0.88, 0.88, ns='floor')
+        # Floor. Keep its top just below z=0 so that poses, paths and the
+        # odometry arrows (all at z=0) are drawn on top of it instead of
+        # disappearing underneath.
+        floor = self.make_box(
+            marker_id, 4.0, 4.0, 8.0, 8.0, 0.05,
+            0.88, 0.88, 0.88, ns='floor'
         )
+        floor.pose.position.z = -0.03
+        array.markers.append(floor)
         marker_id += 1
 
         # Outer walls (from world.WALLS footprints)
@@ -181,11 +186,12 @@ def main(args=None):
     node = PolygonMarkersNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -27,8 +27,10 @@ navigator_ws/
 ├── .gitignore                    # build/, install/, log/, results/plot_data.npz
 ├── run.sh                        # сборка + запуск симуляции
 ├── run_visualize.sh              # headless-прогон + рендер PNG в results/
+├── run_localization_metrics.sh   # headless-прогон EKF + графики ошибок
 ├── results/                      # готовые рисунки для отчёта
 ├── tools/visualize.py            # сбор данных из топиков и отрисовка
+├── tools/localization_metrics.py # RMSE и графики ошибок локализации
 └── src/
     ├── navigator_description/    # только описание робота
     │   ├── CMakeLists.txt, package.xml
@@ -43,15 +45,22 @@ navigator_ws/
     │       ├── motion_node.py            # истинная траектория
     │       ├── uwb_model_node.py         # СШП-дальности
     │       └── lidar_model_node.py       # лидарные сканы
-    └── navigator_bringup/        # launch-файлы
-        ├── CMakeLists.txt, package.xml
-        └── launch/{simulation.launch.py, display.launch.py}
+    ├── navigator_bringup/        # launch-файлы
+    │   ├── CMakeLists.txt, package.xml
+    │   └── launch/{simulation.launch.py, display.launch.py, localization.launch.py}
+    └── navigator_localization/   # этап 5: EKF-локализация по СШП
+        ├── package.xml, setup.py, setup.cfg, resource/
+        ├── config/ekf.yaml
+        ├── test/{test_ekf.py, test_config.py}
+        └── navigator_localization/
+            ├── ekf.py            # чистый EKF (predict/update)
+            └── ekf_node.py       # ROS-обёртка
 ```
 
 Разделение по ролям: `_description` можно переиспользовать с реальным роботом,
 `_sim` заменяется на драйверы датчиков, `_bringup` — единственное место, где пакеты
-собираются вместе. Следующие этапы (5–9) добавляются рядом как
-`navigator_localization`, `navigator_slam`, `navigator_interfaces`.
+собираются вместе. Этап 5 реализован в `navigator_localization`; этапы 6–9
+добавляются рядом как `navigator_slam`, `navigator_interfaces`.
 
 ## Требования
 
@@ -66,8 +75,8 @@ source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 ```
 
-Ожидаемо: `Summary: 3 packages finished` (`navigator_description`, `navigator_sim`,
-`navigator_bringup`).
+Ожидаемо: `Summary: 4 packages finished` (`navigator_description`, `navigator_sim`,
+`navigator_bringup`, `navigator_localization`).
 
 ## Скрипты
 
@@ -76,6 +85,8 @@ colcon build --symlink-install
 | `./run.sh [аргументы launch]` | `colcon build --symlink-install`, `source install/setup.bash`, `ros2 launch navigator_bringup simulation.launch.py`. Аргументы пробрасываются в launch: `./run.sh use_rviz:=false`. Собирает при каждом запуске (~пара секунд), чтобы не стартовать устаревший код. |
 | `./run_visualize.sh [секунды]` | Запускает `tools/visualize.py` в фоне, поднимает headless-симуляцию, пишет данные (62 с по умолчанию, можно `./run_visualize.sh 90`), рендерит PNG в `results/`, затем гасит симуляцию. **Требует уже собранный `install/`** — после правок кода сначала `./run.sh` или `colcon build`. |
 | `python3 tools/visualize.py --replot` | Перерисовывает графики из сохранённого `results/plot_data.npz` без запуска симуляции. Дополнительно: `--duration N`, `--out DIR`. |
+| `./run_localization_metrics.sh [секунды]` | headless-прогон с EKF, запись `/ground_truth/odom` и `/estimate/odom` (62 с по умолчанию), PNG и RMSE в `results/`. |
+| `python3 tools/localization_metrics.py --replot` | Перерисовывает метрики из `results/localization_data.npz`. |
 
 Оба shell-скрипта берут дистрибутив ROS из `/opt/ros/jazzy/setup.bash`; другой путь можно
 задать переменной, например `ROS_SETUP=/opt/ros/humble/setup.bash ./run.sh`.
@@ -94,9 +105,15 @@ ros2 launch navigator_bringup simulation.launch.py use_rviz:=false
 
 # статичный показ модели и карты (без движения, этап 2 отчёта)
 ros2 launch navigator_bringup display.launch.py use_rviz:=false
+
+# этап 5: симуляция + EKF-локализация
+ros2 launch navigator_bringup localization.launch.py
+# эквивалент:
+ros2 launch navigator_bringup simulation.launch.py use_localization:=true
 ```
 
-У обоих launch-файлов есть аргумент `use_rviz` (по умолчанию `true`).
+У всех launch-файлов есть аргумент `use_rviz` (по умолчанию `true`);
+`simulation.launch.py` дополнительно принимает `use_localization`.
 
 ## Узлы и топики
 
@@ -108,6 +125,7 @@ ros2 launch navigator_bringup display.launch.py use_rviz:=false
 | `polygon_markers` (`navigator_sim`) | `/polygon_markers` |
 | `uwb_model_node` (`navigator_sim`) | `/uwb/ideal_ranges`, `/uwb/noisy_ranges`, `/uwb/anchors` |
 | `lidar_model_node` (`navigator_sim`) | `/scan_ideal`, `/scan_noisy` |
+| `ekf_node` (`navigator_localization`) | `/estimate/odom`, `/estimate/path`, `/estimate/error` |
 
 | Топик | Тип | Назначение |
 |-------|-----|-----------|
@@ -122,6 +140,9 @@ ros2 launch navigator_bringup display.launch.py use_rviz:=false
 | `/uwb/anchors` | visualization_msgs/MarkerArray | визуализация якорей |
 | `/polygon_markers` | visualization_msgs/MarkerArray | стены, препятствия, ориентиры |
 | `/tf`, `/tf_static` | tf2_msgs/TFMessage | `map → odom → base_footprint` |
+| `/estimate/odom` | nav_msgs/Odometry | оценка позы EKF (frame `map`) |
+| `/estimate/path` | nav_msgs/Path | накопленная оценка траектории |
+| `/estimate/error` | geometry_msgs/Vector3Stamped | ошибка оценки vs истина (`x`, `y`, `yaw`) |
 
 ## Проверка
 
@@ -139,10 +160,56 @@ ros2 topic hz /uwb/noisy_ranges            # ~10 Гц
 ros2 topic echo --once /uwb/noisy_ranges   # 4 дальности (NaN = пропуск)
 ros2 topic echo --once /ground_truth/odom  # истинная поза
 ros2 run tf2_ros tf2_echo map base_footprint
+ros2 topic hz /estimate/odom               # ~20 Гц (этап 5, если включён EKF)
+ros2 topic echo --once /estimate/error     # ошибка оценки (этап 5)
 ```
 
 Ожидаемо: TF `map → base_footprint` движется по квадрату 4 × 4 м со скоростью 0.35 м/с,
 лидар даёт 360 конечных дальностей в диапазоне ≈ 0.97–7.32 м.
+
+## Этап 5 — EKF-локализация
+
+`navigator_localization` оценивает позу `[x, y, θ]` в `map`:
+
+- **прогноз** — по дифференциальной модели из `/cmd_vel` (`v`, `ω`);
+- **коррекция** — по дальностям `/uwb/noisy_ranges` к якорям A1..A4
+  (`NaN` = пропуск, такое измерение пропускается).
+
+Выходы: `/estimate/odom`, `/estimate/path`, `/estimate/error`. Узел **не**
+публикует TF `odom → base_footprint` (это делает `motion_node`), чтобы не было
+конфликта; дисплеи `/estimate/odom` и `/estimate/path` уже добавлены в
+`navigator.rviz` (синий цвет).
+
+Важное ограничение: одна СШП-метка в статике задаёт только свою позицию,
+поэтому **курс по дальностям не наблюдается** (якобиан ранга 2). Курс
+оценивается через модель движения и уточняется на поворотах; начальный курс
+в `ekf.yaml` задавайте разумно.
+
+Запуск и проверка:
+
+```bash
+ros2 launch navigator_bringup localization.launch.py use_rviz:=false
+ros2 topic hz /estimate/odom
+ros2 topic echo --once /estimate/error
+```
+
+Unit-тесты (без ROS):
+
+```bash
+PYTHONPATH=src/navigator_localization:src/navigator_sim \
+  python3 -m unittest discover -s src/navigator_localization/test -v
+```
+
+Метрики и графики ошибок одной командой:
+
+```bash
+./run_localization_metrics.sh          # 62 с
+./run_localization_metrics.sh 90       # 90 с
+```
+
+Результаты: `results/result_localization_trajectory.png` (истина vs оценка),
+`results/result_localization_error.png` (ошибки `x`, `y`, `yaw` во времени),
+RMSE печатается в консоль.
 
 ## Остановка
 
@@ -162,6 +229,8 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
   дальности лидара 0.12–8.0 м, 360 лучей, 10 Гц.
 - `navigator_description/urdf/navigator_m.urdf` — геометрия «Навигатор-М»
   (лидар `0.18 0 0.34`, СШП-метка `-0.15 0.12 0.46`, колея 0.42 м).
+- `navigator_localization/config/ekf.yaml` — начальная поза и её σ, `Q`, `σ` СШП,
+  смещение метки, якоря A1..A4, частота прогноза 20 Гц (этап 5).
 
 ## Рисунки для отчёта
 
@@ -187,8 +256,8 @@ python3 tools/visualize.py --replot
 ## RViz
 
 `navigator_description/config/navigator.rviz` задаёт вид сверху: модель робота, TF,
-траекторию, маркеры полигона и два лидарных скана (`/scan_ideal`, `/scan_noisy`),
-Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
+истинную траекторию и оценку EKF (`/estimate/odom`, `/estimate/path`), маркеры
+полигона и два лидарных скана (`/scan_ideal`, `/scan_noisy`), Fixed Frame — `map`. В Windows 11 окно RViz открывается через WSLg; на headless-машине
 можно снимать скриншоты через виртуальный дисплей:
 
 ```bash

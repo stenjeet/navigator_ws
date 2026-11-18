@@ -13,21 +13,27 @@ def generate_launch_description():
     map + RViz (report sections 3-4). Pass use_rviz:=false for a headless run."""
     description_share = get_package_share_directory('navigator_description')
     sim_share = get_package_share_directory('navigator_sim')
+    loc_share = get_package_share_directory('navigator_localization')
 
     urdf_path = os.path.join(description_share, 'urdf', 'navigator_m.urdf')
     rviz_path = os.path.join(description_share, 'config', 'navigator.rviz')
     motion_yaml = os.path.join(sim_share, 'config', 'motion.yaml')
     sensors_yaml = os.path.join(sim_share, 'config', 'sensors.yaml')
+    ekf_yaml = os.path.join(loc_share, 'config', 'ekf.yaml')
 
     with open(urdf_path, 'r') as infp:
         robot_description = infp.read()
 
     use_rviz = LaunchConfiguration('use_rviz')
+    use_localization = LaunchConfiguration('use_localization')
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_rviz', default_value='true',
             description='Start RViz2 (set false for headless runs).'),
+        DeclareLaunchArgument(
+            'use_localization', default_value='false',
+            description='Start the EKF localization node (stage 5).'),
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
@@ -70,6 +76,14 @@ def generate_launch_description():
             executable='lidar_model_node',
             name='lidar_model_node',
             parameters=[sensors_yaml],
+            output='screen'
+        ),
+        Node(
+            package='navigator_localization',
+            executable='ekf_node',
+            name='ekf_node',
+            parameters=[ekf_yaml],
+            condition=IfCondition(use_localization),
             output='screen'
         ),
         Node(

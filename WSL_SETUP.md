@@ -1,8 +1,8 @@
 # Запуск проекта в Windows 11 + WSL 2 (Ubuntu 24.04, ROS 2 Jazzy)
 
 Пошаговая инструкция: от чистой Windows до работающей симуляции.
-Проект — папка `navigator_ws` (внутри `src/` три пакета: `navigator_description`,
-`navigator_sim`, `navigator_bringup`).
+Проект — папка `navigator_ws` (внутри `src/` четыре пакета: `navigator_description`,
+`navigator_sim`, `navigator_bringup`, `navigator_localization`).
 
 > Соответствие версий: **Ubuntu 24.04 → ROS 2 Jazzy**. ROS 2 Humble ставится только
 > на Ubuntu 22.04, поэтому здесь он не используется.
@@ -62,10 +62,16 @@ source ~/.bashrc
 
 Проверка: `printenv ROS_DISTRO` → `jazzy`.
 
-Опционально (нужно только для `run_visualize.sh`):
+Обязательно для EKF-локализации (этап 5):
 
 ```bash
-sudo apt install -y python3-numpy python3-matplotlib
+sudo apt install -y python3-numpy python3-yaml
+```
+
+Опционально (рисунки `run_visualize.sh` и запуск тестов):
+
+```bash
+sudo apt install -y python3-matplotlib python3-pytest
 ```
 
 ---
@@ -100,8 +106,8 @@ source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 ```
 
-Ожидаемо: `Summary: 3 packages finished` (`navigator_description`, `navigator_sim`,
-`navigator_bringup`).
+Ожидаемо: `Summary: 4 packages finished` (`navigator_description`, `navigator_sim`,
+`navigator_bringup`, `navigator_localization`).
 
 ---
 
@@ -132,6 +138,14 @@ ros2 launch navigator_bringup simulation.launch.py use_rviz:=false
 ros2 launch navigator_bringup display.launch.py
 ```
 
+Этап 5 — симуляция + EKF-локализация:
+
+```bash
+ros2 launch navigator_bringup localization.launch.py
+# эквивалент:
+ros2 launch navigator_bringup simulation.launch.py use_localization:=true
+```
+
 Остановить — `Ctrl+C`.
 
 ---
@@ -142,18 +156,60 @@ ros2 launch navigator_bringup display.launch.py
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
-ros2 pkg list | grep navigator             # 3 пакета
-ros2 node list                              # 6 узлов, без дублей
+ros2 pkg list | grep navigator             # 4 пакета
+ros2 node list                              # 6 узлов без EKF, 7 с EKF
 ros2 topic list                             # список топиков
 ros2 topic hz /scan_ideal                   # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges             # ~10 Гц
 ros2 topic echo --once /uwb/noisy_ranges    # 4 дальности (NaN = пропуск)
 ros2 topic echo --once /ground_truth/odom   # истинная поза
 ros2 run tf2_ros tf2_echo map base_footprint
+ros2 topic hz /estimate/odom                # ~20 Гц (если EKF включён)
+ros2 topic echo --once /estimate/error      # ошибка оценки (этап 5)
 ```
 
-Ожидаемо: 6 узлов, все топики из `README.md`, частоты ~10 Гц, TF движется
-по квадрату 4 × 4 м со скоростью 0.35 м/с.
+Ожидаемо: 6 узлов без EKF (7 с `use_localization:=true`), все топики из
+`README.md`, частоты ~10 Гц, TF движется по квадрату 4 × 4 м со скоростью
+0.35 м/с; `/estimate/odom` — ~20 Гц.
+
+### Проверка EKF (этап 5)
+
+Unit-тесты (без запуска симуляции):
+
+```bash
+cd ~/navigator_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+PYTHONPATH=src/navigator_localization:src/navigator_sim \
+  python3 -m unittest discover -s src/navigator_localization/test -v
+# или через colcon:
+colcon test --packages-select navigator_localization
+colcon test-result --verbose
+```
+
+Запуск с EKF и проверка (второй терминал):
+
+```bash
+ros2 launch navigator_bringup localization.launch.py use_rviz:=false
+ros2 topic hz /estimate/odom
+ros2 topic echo --once /estimate/odom
+ros2 topic echo --once /estimate/error
+```
+
+В логе `ekf_node` раз в секунду печатается `RMSE x=... y=... yaw=...`.
+На зашумлённых СШП ошибка положения — единицы сантиметров. Курс по одной
+метке в статике не наблюдается, поэтому он уточняется на поворотах.
+
+Графики ошибок и итоговый RMSE одной командой:
+
+```bash
+cd ~/navigator_ws
+./run_localization_metrics.sh          # 62 с
+./run_localization_metrics.sh 90       # 90 с
+```
+
+Результаты — `results/result_localization_trajectory.png` (истина vs оценка)
+и `results/result_localization_error.png` (ошибки `x`, `y`, `yaw`); RMSE
+печатается в консоль.
 
 ---
 
@@ -188,3 +244,6 @@ python3 tools/visualize.py --replot
 | RViz падает с ошибкой OpenGL | `sudo apt install -y mesa-utils libgl1-mesa-dri` и перезапустить WSL (`wsl --shutdown`) |
 | После `Ctrl+C` остались процессы | `pkill -9 -f lib/navigator_sim` |
 | `plot_data.npz`/PNG не создались | не установлены `python3-numpy` и `python3-matplotlib` — см. раздел 2 |
+| `ModuleNotFoundError: No module named 'numpy'` | не установлен `python3-numpy` — `sudo apt install -y python3-numpy` |
+| `Package 'navigator_localization' not found` | workspace не пересобран — `colcon build --symlink-install`, затем `source install/setup.bash` |
+| EKF не стартует | по умолчанию `use_localization:=false`; используйте `localization.launch.py` или `use_localization:=true` |

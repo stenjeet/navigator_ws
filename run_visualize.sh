@@ -5,9 +5,10 @@
 #   ./run_visualize.sh 90       # 90 s recording
 #
 # Requires matplotlib and numpy for python3.
-set -euo pipefail
+set -eo pipefail
 cd "$(dirname "$0")"
 
+# ROS setup scripts are not compatible with `set -u` (unbound variables).
 # shellcheck disable=SC1091
 source "${ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 if [ ! -f install/setup.bash ]; then
@@ -16,6 +17,7 @@ if [ ! -f install/setup.bash ]; then
 fi
 # shellcheck disable=SC1091
 source install/setup.bash
+set -u
 
 DURATION="${1:-62}"
 
