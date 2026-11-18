@@ -6,9 +6,10 @@
 #
 # Requires matplotlib and numpy (python3-matplotlib, python3-numpy) and a built
 # workspace (colcon build --symlink-install).
-set -euo pipefail
+set -eo pipefail
 cd "$(dirname "$0")"
 
+# ROS setup scripts are not compatible with `set -u` (unbound variables).
 # shellcheck disable=SC1091
 source "${ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 if [ ! -f install/setup.bash ]; then
@@ -17,6 +18,7 @@ if [ ! -f install/setup.bash ]; then
 fi
 # shellcheck disable=SC1091
 source install/setup.bash
+set -u
 
 DURATION="${1:-62}"
 
