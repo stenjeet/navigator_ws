@@ -16,6 +16,7 @@ Outputs:
 import math
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Quaternion, TransformStamped, Twist
 from nav_msgs.msg import Odometry, Path
@@ -200,11 +201,12 @@ def main(args=None):
     node = MotionNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
