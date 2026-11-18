@@ -110,11 +110,15 @@ class PolygonMarkersNode(Node):
         array = MarkerArray()
         marker_id = 0
 
-        # Floor
-        array.markers.append(
-            self.make_box(marker_id, 4.0, 4.0, 8.0, 8.0, 0.05,
-                          0.88, 0.88, 0.88, ns='floor')
+        # Floor. Keep its top just below z=0 so that poses, paths and the
+        # odometry arrows (all at z=0) are drawn on top of it instead of
+        # disappearing underneath.
+        floor = self.make_box(
+            marker_id, 4.0, 4.0, 8.0, 8.0, 0.05,
+            0.88, 0.88, 0.88, ns='floor'
         )
+        floor.pose.position.z = -0.03
+        array.markers.append(floor)
         marker_id += 1
 
         # Outer walls (from world.WALLS footprints)
