@@ -15,8 +15,9 @@
 
 > **Статус проверки на момент оформления.** В среде без ROS (macOS) выполнены:
 > `py_compile` всех Python-файлов, разбор URDF/launch, статическая проверка
-> геометрии сцены и **189 чистых unit-тестов** (177 в `navigator_slam`,
-> 12 в `navigator_localization`) — все проходят. Полный runtime-прогон ROS 2
+> геометрии сцены и **197 чистых unit-тестов** (177 в `navigator_slam`,
+> 12 в `navigator_localization`, 8 в `navigator_sim`) — все проходят.
+> Полный runtime-прогон ROS 2
 > (RViz, топики, сценарии этапа 9) выполняется в WSL по командам из разделов
 > ниже: это финальный шаг приёмки, а не отсутствующая функциональность.
 
@@ -485,6 +486,9 @@ PYTHONPATH=src/navigator_slam:src/navigator_sim python3 -m unittest \
     запускается `mapping.launch.py pose_source:=both`, пишутся RMSE
     (`/estimate/error`) и метрики карт;
   - `--quick` — 3 сценария по 30 с; полный профиль — 10 сценариев по 62 с;
+  - `--warmup` — сколько секунд после первого `/estimate/error` отбросить как
+    переходный процесс (по умолчанию 3 с), чтобы стартовая ошибка EKF не
+    определяла `max |e|`;
   - `--replot` — отрисовка из `analysis_data.npz` без ROS;
   - `summary.md` содержит таблицу и автоматические выводы;
 - `tools/visualize.py`, `tools/localization_metrics.py`,
@@ -618,8 +622,9 @@ r = 0.09 м, h = 0.45 м.
 |---|---|---|
 | `PYTHONPATH=src/navigator_localization:src/navigator_sim python3 -m unittest discover -s src/navigator_localization/test -v` | EKF, конфиг, смещение метки | 12 тестов, OK |
 | `PYTHONPATH=src/navigator_slam:src/navigator_sim python3 -m unittest discover -s src/navigator_slam/test -v` | сетка, ориентиры, EKF-SLAM, анализ | 177 тестов, OK |
+| `PYTHONPATH=src/navigator_sim python3 -m unittest discover -s src/navigator_sim/test -v` | геометрия полигона, цвета, URDF | 8 тестов, OK |
 | `python3 -m py_compile $(find src tools -name '*.py')` | синтаксис всех модулей | без ошибок |
-| `colcon test --packages-select navigator_localization navigator_slam && colcon test-result --verbose` | те же тесты через colcon | без ошибок |
+| `colcon test && colcon test-result --verbose` | тесты всех пакетов через colcon | без ошибок, `navigator_sim` больше не падает с «NO TESTS RAN» |
 | `ros2 doctor` | окружение ROS | без критических ошибок |
 
 Тесты не требуют ROS: чистые модули не импортируют `rclpy` и сообщения,

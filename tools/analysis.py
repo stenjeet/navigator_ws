@@ -84,6 +84,10 @@ EKF_CONFIG_PATH = os.path.join(
 DEFAULT_DURATION = 62.0
 QUICK_DURATION = 30.0
 DEFAULT_STARTUP_TIMEOUT = 25.0
+#: Discard this many seconds after the first /estimate/error sample. The EKF
+#: starts with a fixed initial pose while the robot may already be moving, so
+#: the first samples contain a large transient and would dominate max |e|.
+DEFAULT_WARMUP = 3.0
 
 DATA_NAME = 'analysis_data.npz'
 SUMMARY_MD = 'summary.md'
@@ -586,11 +590,13 @@ def message_to_grid(message):
 
 
 def record_scenario(duration, process, log_path,
-                    startup_timeout=DEFAULT_STARTUP_TIMEOUT):
+                    startup_timeout=DEFAULT_STARTUP_TIMEOUT,
+                    warmup=DEFAULT_WARMUP):
     """Record one scenario while the launch subprocess runs.
 
     Waits for the first ``/estimate/error`` sample (a clear failure otherwise),
-    then collects ``duration`` seconds of ``/estimate/error`` and the final
+    discards ``warmup`` seconds while the filter converges, then collects
+    ``duration`` seconds of ``/estimate/error`` and the final
     ``/map/ground_truth`` + ``/map/estimate`` grids.
     """
     try:
@@ -650,6 +656,19 @@ def record_scenario(duration, process, log_path,
                 rclpy.spin_once(node, timeout_sec=0.1)
             except ExternalShutdownException:
                 raise KeyboardInterrupt
+
+        warmup = max(0.0, float(warmup))
+        if warmup > 0.0:
+            warmup_until = time.monotonic() + warmup
+            while time.monotonic() < warmup_until:
+                check_process(process, log_path)
+                try:
+                    rclpy.spin_once(node, timeout_sec=0.1)
+                except ExternalShutdownException:
+                    raise KeyboardInterrupt
+            # Drop the startup transient: those samples are not a property of
+            # the estimator under test, only of the node start-up order.
+            estimate.clear()
 
         deadline = time.monotonic() + float(duration)
         while time.monotonic() < deadline:
@@ -791,6 +810,7 @@ def run_one_scenario(scenario, args, config_dir, sensor_base, ekf_document):
                 startup_timeout=getattr(
                     args, 'startup_timeout', DEFAULT_STARTUP_TIMEOUT
                 ),
+                warmup=getattr(args, 'warmup', DEFAULT_WARMUP),
             )
         finally:
             stop_launch(process)
@@ -870,7 +890,10 @@ TABLE_COLUMNS = (
 
 SUMMARY_NOTES = (
     'Metrics: `RMSE` is computed from `/estimate/error` (`x`, `y` and the yaw '
-    'error in radians, shown in degrees); `max |e|` is the peak position error; '
+    'error in radians, shown in degrees); the first seconds after the first '
+    'sample are discarded as a warm-up (`--warmup`, default 3 s), so the table '
+    'does not include the filter start-up transient; `max |e|` is the peak '
+    'position error; '
     '`IoU occupied` compares the occupied cells of the final '
     '`/map/ground_truth` and `/map/estimate` grids and `Mean dist` is the mean '
     'distance from an occupied cell of one map to the nearest occupied cell of '
@@ -1419,6 +1442,12 @@ def parse_args(argv=None):
         '--startup-timeout', type=float, default=DEFAULT_STARTUP_TIMEOUT,
         help='seconds to wait for /estimate/error after launching a scenario '
              '(default: %(default)s)',
+    )
+    parser.add_argument(
+        '--warmup', type=float, default=DEFAULT_WARMUP,
+        help='seconds discarded after the first /estimate/error sample so the '
+             'start-up transient does not dominate the metrics (default: '
+             '%(default)s)',
     )
     return parser.parse_args(argv)
 

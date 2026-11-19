@@ -162,6 +162,7 @@ class LidarModelNode(Node):
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
+        self.stamp = None
         self.have_pose = False
 
         self.odom_sub = self.create_subscription(
@@ -188,6 +189,10 @@ class LidarModelNode(Node):
         siny = 2.0 * (q.w * q.z + q.x * q.y)
         cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.yaw = math.atan2(siny, cosy)
+        # Stamp the scan with the pose stamp: the scan then refers to a TF that
+        # already exists, so RViz does not extrapolate into the future. The
+        # occupancy grid and landmark node also match the pose by stamp.
+        self.stamp = msg.header.stamp
         self.have_pose = True
 
     def lidar_position(self):
@@ -225,9 +230,10 @@ class LidarModelNode(Node):
                 z = min(max(z, self.range_min), self.range_max)
                 noisy.ranges[j] = float(z)
 
-        now = self.get_clock().now().to_msg()
-        ideal.header.stamp = now
-        noisy.header.stamp = now
+        stamp = self.stamp if self.stamp is not None else (
+            self.get_clock().now().to_msg())
+        ideal.header.stamp = stamp
+        noisy.header.stamp = stamp
         self.ideal_pub.publish(ideal)
         self.noisy_pub.publish(noisy)
 
