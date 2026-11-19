@@ -31,7 +31,7 @@ landmark_node:
 
     # --- Circle test ---
     # Admissible landmark radius [m]: the polygon landmarks have r = 0.09 m,
-    # the big cylinders r = 0.35 m and 0.45 m must stay outside this window.
+    # the big cylinders r = 0.30 m and 0.42 m must stay outside this window.
     radius_min: 0.04
     radius_max: 0.25
     # Largest radial RMS residual of an accepted least-squares fit [m].

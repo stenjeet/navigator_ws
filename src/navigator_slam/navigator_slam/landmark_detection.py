@@ -26,7 +26,7 @@ Extraction pipeline
    chord/sagitta arc fit instead (:func:`fit_arc`), which does not need a
    well-conditioned normal equation. A flat wall has (almost) no sagitta, so
    its arc radius blows up and the cluster is rejected; the same radius limits
-   remove the 0.35/0.45 m cylinders, and ``max_cluster_width`` removes the
+   remove the 0.30/0.42 m cylinders, and ``max_cluster_width`` removes the
    walls, the L-shaped wall and the triangle. The Kasa fit is only trusted when
    the cluster spans at least ``MIN_FIT_SPAN`` radians.
 

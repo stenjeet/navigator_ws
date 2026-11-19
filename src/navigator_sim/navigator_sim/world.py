@@ -1,12 +1,27 @@
 """Single source of truth for the test polygon geometry.
 
-Values follow the report tables (2.2, 2.3) and are verified collision-free
-against the square trajectory (side 4.0 m, corners 1.5..5.5 m). Both the RViz
-marker publisher and the lidar ray-casting model import this module so that the
-visual map and the measured distances never diverge.
+Layout revision: the obstacles were rearranged so that they stay at least
+0.45 m clear of the square trajectory (side 4.0 m, corners 1.5..5.5 m), while
+all four SLAM landmarks remain observable from at least one side of the path.
+Both the RViz marker publisher and the lidar ray-casting model import this
+module so that the visual map and the measured distances never diverge.
 
 All 2D rectangles are stored as (x_min, x_max, y_min, y_max) [m].
 """
+
+# --------------------------------------------------------------------------
+# Scene palette: (r, g, b) in [0, 1]. The marker publisher reads these values,
+# so the rendered scene and the documentation share one colour definition.
+# --------------------------------------------------------------------------
+COLORS = {
+    'floor': (0.90, 0.91, 0.93),             # light grey
+    'walls': (0.24, 0.26, 0.30),             # graphite
+    'box_obstacle': (0.15, 0.38, 0.78),      # blue L-wall
+    'cylinder_obstacle': (0.95, 0.45, 0.08),  # orange cylinders
+    'triangle_obstacle': (0.08, 0.65, 0.60),  # teal prism
+    'uwb_anchor': (1.00, 0.55, 0.00),        # amber anchors
+    'label': (0.10, 0.10, 0.10),             # anchor labels
+}
 
 # --------------------------------------------------------------------------
 # Outer walls. Arena is 8 x 8 m; walls are 0.12 m thick and 0.50 m high,
@@ -23,34 +38,36 @@ WALLS = [
 ]
 
 # --------------------------------------------------------------------------
-# Internal axis-aligned obstacles (purple L-shaped wall).
-# Table 2.2: horizontal part centre (3.10, 4.85) 2.20 x 0.22 x 0.70,
-#            vertical part   centre (2.10, 3.75) 0.22 x 2.40 x 0.70.
+# Internal axis-aligned obstacles (blue L-shaped wall, north-west quadrant).
+# Horizontal part: 2.00 x 0.22 x 0.70 at y = 4.55..4.77,
+# vertical part:   0.22 x 1.97 x 0.70 at x = 2.20..2.42.
+# The L opens towards the south-east; every edge stays >= 0.70 m from the path.
 # --------------------------------------------------------------------------
 BOX_OBSTACLES = [
-    (2.00, 4.20, 4.74, 4.96, 0.70),   # L-wall, horizontal part
-    (1.99, 2.21, 2.55, 4.95, 0.70),   # L-wall, vertical part
+    (2.20, 4.20, 4.55, 4.77, 0.70),   # L-wall, horizontal part
+    (2.20, 2.42, 2.80, 4.77, 0.70),   # L-wall, vertical part
 ]
 
 # --------------------------------------------------------------------------
 # Cylindrical obstacles: (x, y, radius, height) [m].
-# Table 2.2: cylinder 1 centre (6.35, 2.65) r=0.35 h=0.60,
-#            cylinder 2 centre (6.25, 6.25) r=0.45 h=0.80.
+# One in the south-east outer corridor, one in the north-west outer corridor;
+# both leave >= 0.48 m to the trajectory and keep all landmarks visible.
 # --------------------------------------------------------------------------
 CYLINDER_OBSTACLES = [
-    (6.35, 2.65, 0.35, 0.60),   # cylinder 1
-    (6.25, 6.25, 0.45, 0.80),   # cylinder 2
+    (6.55, 2.30, 0.30, 0.60),   # cylinder 1, east corridor
+    (0.60, 6.55, 0.42, 0.85),   # cylinder 2, west/north corridor
 ]
 
 # --------------------------------------------------------------------------
-# Triangular obstacle (green). Table 2.2: vertices (4.35, 3.00), (5.05, 3.10),
-# (4.65, 3.75), height 0.55 m.
+# Triangular obstacle (teal prism, north-east quadrant). Vertices
+# (4.45, 4.55), (5.00, 4.30), (4.70, 5.00); height 0.55 m. The closest vertex
+# keeps 0.50 m to the northern/eastern path edges.
 # --------------------------------------------------------------------------
 TRIANGLE_OBSTACLE = {
     'vertices': [
-        (4.35, 3.00),
-        (5.05, 3.10),
-        (4.65, 3.75),
+        (4.45, 4.55),
+        (5.00, 4.30),
+        (4.70, 5.00),
     ],
     'height': 0.55,
 }

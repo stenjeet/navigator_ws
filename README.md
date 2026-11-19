@@ -468,7 +468,8 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
 - `navigator_sim/config/sensors.yaml` — seed 12025, σ/смещения/пропуски СШП и лидара,
   дальности лидара 0.12–8.0 м, 360 лучей, 10 Гц.
 - `navigator_description/urdf/navigator_m.urdf` — геометрия «Навигатор-М»
-  (лидар `0.18 0 0.34`, СШП-метка `-0.15 0.12 0.46`, колея 0.42 м).
+  (корпус r = 0.24 м, h = 0.22 м; лидар `0.18 0 0.34`, СШП-метка
+  `-0.15 0.12 0.46`, колея 0.42 м).
 - `navigator_localization/config/ekf.yaml` — начальная поза и её σ, `Q`, `σ` СШП,
   смещение метки, якоря A1..A4, частота прогноза 20 Гц (этап 5).
 - `navigator_slam/config/occupancy.yaml` — разрешение 0.05 м, границы сетки,
