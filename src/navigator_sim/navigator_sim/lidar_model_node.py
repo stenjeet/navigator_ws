@@ -153,6 +153,7 @@ class LidarModelNode(Node):
         self.range_max = float(self.get_parameter('lidar_range_max').value)
         self.beams = int(self.get_parameter('lidar_beams').value)
         rate_hz = float(self.get_parameter('lidar_rate_hz').value)
+        self.scan_time = 1.0 / rate_hz
 
         self.rng = random.Random(seed)
         self.geometry = WorldGeometry()
@@ -161,6 +162,7 @@ class LidarModelNode(Node):
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
+        self.stamp = None
         self.have_pose = False
 
         self.odom_sub = self.create_subscription(
@@ -187,6 +189,10 @@ class LidarModelNode(Node):
         siny = 2.0 * (q.w * q.z + q.x * q.y)
         cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.yaw = math.atan2(siny, cosy)
+        # Stamp the scan with the pose stamp: the scan then refers to a TF that
+        # already exists, so RViz does not extrapolate into the future. The
+        # occupancy grid and landmark node also match the pose by stamp.
+        self.stamp = msg.header.stamp
         self.have_pose = True
 
     def lidar_position(self):
@@ -224,9 +230,10 @@ class LidarModelNode(Node):
                 z = min(max(z, self.range_min), self.range_max)
                 noisy.ranges[j] = float(z)
 
-        now = self.get_clock().now().to_msg()
-        ideal.header.stamp = now
-        noisy.header.stamp = now
+        stamp = self.stamp if self.stamp is not None else (
+            self.get_clock().now().to_msg())
+        ideal.header.stamp = stamp
+        noisy.header.stamp = stamp
         self.ideal_pub.publish(ideal)
         self.noisy_pub.publish(noisy)
 
@@ -236,8 +243,8 @@ class LidarModelNode(Node):
         scan.angle_min = self.angle_min
         scan.angle_max = self.angle_max
         scan.angle_increment = self.angle_increment
-        scan.time_increment = 0.0
-        scan.scan_time = 0.1
+        scan.time_increment = self.scan_time / self.beams
+        scan.scan_time = self.scan_time
         scan.range_min = self.range_min
         scan.range_max = self.range_max
         scan.ranges = [0.0] * self.beams

@@ -32,6 +32,7 @@ navigator_ws/
 ├── run_map_compare.sh            # headless-прогон двух карт + сравнение
 ├── run_analysis.sh               # сценарный анализ точности (этап 9)
 ├── docs/stages7-9-contract.md    # контракт топиков/сообщений этапов 7-9
+├── docs/assignment-implementation.md  # соответствие девяти этапам задания
 ├── results/                      # готовые рисунки для отчёта
 ├── tools/visualize.py            # сбор данных из топиков и отрисовка
 ├── tools/localization_metrics.py # RMSE и графики ошибок локализации
@@ -131,8 +132,9 @@ ros2 launch navigator_bringup simulation.launch.py
 # без графики
 ros2 launch navigator_bringup simulation.launch.py use_rviz:=false
 
-# статичный показ модели и карты (без движения, этап 2 отчёта)
-ros2 launch navigator_bringup display.launch.py use_rviz:=false
+# статичный показ модели и карты (без движения, этап 2 отчёта);
+# use_rviz:=false — только headless smoke-test без окна
+ros2 launch navigator_bringup display.launch.py
 
 # этап 5: симуляция + EKF-локализация
 ros2 launch navigator_bringup localization.launch.py
@@ -212,7 +214,7 @@ cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
 ros2 pkg list | grep navigator             # 6 пакетов
-ros2 node list                             # 6 узлов без RViz (7 с EKF, 9 с картами, 10 со SLAM)
+ros2 node list                             # 6 без EKF; 7 с EKF; 8 с landmark_node; 8 со SLAM; 9 с двумя картографами (+1 с RViz)
 ros2 topic list                            # все топики из таблицы выше
 ros2 topic hz /scan_ideal                  # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges            # ~10 Гц
@@ -231,7 +233,8 @@ ros2 topic echo --once /slam/error         # ошибка SLAM vs истина
 ```
 
 Ожидаемо: TF `map → base_footprint` движется по квадрату 4 × 4 м со скоростью 0.35 м/с,
-лидар даёт 360 конечных дальностей в диапазоне ≈ 0.97–7.32 м.
+лидар даёт 360 лучей; ближайшие стены ≈ 1.4 м от старта, дальние лучи
+ограничены `range_max = 8 м` (`inf` = пропуск/нет отражения).
 
 ## Этап 5 — EKF-локализация
 
@@ -348,8 +351,9 @@ IoU по занятым ячейкам чувствителен к сдвигу:
   сшиваются, полный круг скана замыкается циклически;
 - **геометрия** — кластер принимается, если в нём `min_points..max_points`
   лучей, ширина ≤ `max_cluster_width` (0.20 м), а круг радиуса 0.04–0.25 м
-  описывает дугу с residual ≤ `max_residual`; иначе используется центр по хорде
-  и стрелке (`fit_arc`), поэтому ориентир не отбрасывается;
+  описывает дугу с residual ≤ `max_residual`; для коротких дуг используется
+  `fit_arc` (хорда/стрелка), и кластер всё равно отбрасывается, если радиус
+  или residual не проходят пороги;
 - **наблюдение** (`navigator_interfaces/LandmarkObservationArray`) — в системе
   `base_footprint`: `range` и `bearing` от центра робота (смещение лидара
   скомпенсировано), `radius` и собственные дисперсии детектора;
@@ -416,6 +420,10 @@ Sigma = cov(mu)                      # (2N+3) x (2N+3)
 сканов, два круга): ошибка позы 2.7 см в среднем, **4 ориентира** с ошибкой
 1.6–4.5 см, без фантомов на стенах.
 
+Для runtime-проверки замыкания поставьте `loops: 2` в
+`navigator_sim/config/motion.yaml` (штатно `loops: 1`); после второго круга
+`/slam/landmarks` должен сохранить те же 4 id без дубликатов.
+
 ```bash
 ros2 launch navigator_bringup slam.launch.py use_rviz:=false
 ros2 topic hz /slam/odom
@@ -450,6 +458,11 @@ ros2 topic echo --once /slam/landmarks
 python3 tools/analysis.py --replot   # таблица и графики без запуска симуляции
 ```
 
+Первые 3 с после первого `/estimate/error` отбрасываются как прогрев
+(`--warmup`, по умолчанию 3 с): EKF стартует с фиксированной начальной позой,
+пока робот уже движется, и этот переходный процесс иначе даёт большой
+`max |e|`, не относящийся к установившейся точности.
+
 ## Остановка
 
 `Ctrl+C` в терминале запуска. Если после аварийного прерывания остались процессы:
@@ -468,7 +481,8 @@ pkill -9 -f /opt/ros/jazzy/lib/tf2_ros/static_transform_publisher
 - `navigator_sim/config/sensors.yaml` — seed 12025, σ/смещения/пропуски СШП и лидара,
   дальности лидара 0.12–8.0 м, 360 лучей, 10 Гц.
 - `navigator_description/urdf/navigator_m.urdf` — геометрия «Навигатор-М»
-  (лидар `0.18 0 0.34`, СШП-метка `-0.15 0.12 0.46`, колея 0.42 м).
+  (корпус r = 0.24 м, h = 0.22 м; лидар `0.18 0 0.34`, СШП-метка
+  `-0.15 0.12 0.46`, колея 0.42 м).
 - `navigator_localization/config/ekf.yaml` — начальная поза и её σ, `Q`, `σ` СШП,
   смещение метки, якоря A1..A4, частота прогноза 20 Гц (этап 5).
 - `navigator_slam/config/occupancy.yaml` — разрешение 0.05 м, границы сетки,

@@ -155,10 +155,20 @@ class Recorder:
             v.uwb.append((time.time(), list(v.last_uwb_ideal), list(msg.data)))
 
 
+def _hex(rgb):
+    """Convert a ``world.COLORS`` tuple to a matplotlib hex colour."""
+    return '#%02x%02x%02x' % tuple(
+        int(round(255.0 * float(channel))) for channel in rgb
+    )
+
+
 def render(v, world):
     os.makedirs(OUT_DIR, exist_ok=True)
-    wall_c = '#33333f'
-    obst_c = '#9440a0'
+    wall_c = _hex(world.COLORS['walls'])
+    obst_c = _hex(world.COLORS['box_obstacle'])
+    cylinder_c = _hex(world.COLORS['cylinder_obstacle'])
+    triangle_c = _hex(world.COLORS['triangle_obstacle'])
+    anchor_c = _hex(world.COLORS['uwb_anchor'])
 
     # ---- result_map.png ----
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -169,13 +179,13 @@ def render(v, world):
         ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin,
                                facecolor=obst_c, edgecolor='none'))
     for (cx, cy, r, _h) in world.CYLINDER_OBSTACLES:
-        ax.add_patch(Circle((cx, cy), r, facecolor='#d92626', edgecolor='none'))
+        ax.add_patch(Circle((cx, cy), r, facecolor=cylinder_c, edgecolor='none'))
     tri = world.TRIANGLE_OBSTACLE['vertices']
-    ax.add_patch(Polygon(tri, closed=True, facecolor='#26b340', edgecolor='none'))
+    ax.add_patch(Polygon(tri, closed=True, facecolor=triangle_c, edgecolor='none'))
     for (name, lx, ly, lr, _h, col) in world.LANDMARKS:
         ax.add_patch(Circle((lx, ly), lr, facecolor=col, edgecolor='k', linewidth=0.5))
     for (name, ax_, ay_, az_) in world.UWB_ANCHORS:
-        ax.plot(ax_, ay_, marker='*', markersize=12, color='orange', markeredgecolor='k')
+        ax.plot(ax_, ay_, marker='*', markersize=12, color=anchor_c, markeredgecolor='k')
         ax.annotate(name, (ax_, ay_), textcoords='offset points', xytext=(6, 6), fontsize=9)
 
     if v.map_points:

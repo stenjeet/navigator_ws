@@ -90,18 +90,21 @@ class PolygonMarkersNode(Node):
         return marker
 
     def make_anchor(self, marker_id, label_id, name, x, y, z):
+        anchor_color = world.COLORS['uwb_anchor']
+        label_color = world.COLORS['label']
         anchor = self.make_cylinder(
             marker_id, x, y, radius=0.12, height=1.20,
-            r=1.0, g=0.55, b=0.0, ns='uwb_anchors'
+            r=anchor_color[0], g=anchor_color[1], b=anchor_color[2],
+            ns='uwb_anchors'
         )
         label = self._base_marker(label_id, 'labels', Marker.TEXT_VIEW_FACING)
         label.pose.position.x = float(x)
         label.pose.position.y = float(y)
         label.pose.position.z = float(z + 0.25)
         label.scale.z = 0.28
-        label.color.r = 0.1
-        label.color.g = 0.1
-        label.color.b = 0.1
+        label.color.r = float(label_color[0])
+        label.color.g = float(label_color[1])
+        label.color.b = float(label_color[2])
         label.color.a = 1.0
         label.text = name
         return anchor, label
@@ -115,14 +118,14 @@ class PolygonMarkersNode(Node):
         # disappearing underneath.
         floor = self.make_box(
             marker_id, 4.0, 4.0, 8.0, 8.0, 0.05,
-            0.88, 0.88, 0.88, ns='floor'
+            *world.COLORS['floor'], ns='floor'
         )
         floor.pose.position.z = -0.03
         array.markers.append(floor)
         marker_id += 1
 
         # Outer walls (from world.WALLS footprints)
-        wall_color = (0.20, 0.20, 0.25)
+        wall_color = world.COLORS['walls']
         for (xmin, xmax, ymin, ymax) in world.WALLS:
             cx = 0.5 * (xmin + xmax)
             cy = 0.5 * (ymin + ymax)
@@ -134,8 +137,8 @@ class PolygonMarkersNode(Node):
             )
             marker_id += 1
 
-        # L-shaped wall (box obstacles)
-        obstacle_color = (0.58, 0.22, 0.58)
+        # Z-shaped wall (box obstacles)
+        obstacle_color = world.COLORS['box_obstacle']
         for (xmin, xmax, ymin, ymax, height) in world.BOX_OBSTACLES:
             cx = 0.5 * (xmin + xmax)
             cy = 0.5 * (ymin + ymax)
@@ -151,7 +154,7 @@ class PolygonMarkersNode(Node):
         for (x, y, radius, height) in world.CYLINDER_OBSTACLES:
             array.markers.append(
                 self.make_cylinder(marker_id, x, y, radius, height,
-                                   0.85, 0.15, 0.15)
+                                   *world.COLORS['cylinder_obstacle'])
             )
             marker_id += 1
 
@@ -159,7 +162,7 @@ class PolygonMarkersNode(Node):
         tri = world.TRIANGLE_OBSTACLE
         array.markers.append(
             self.make_triangle_prism(marker_id, tri['vertices'], tri['height'],
-                                     0.15, 0.70, 0.25)
+                                     *world.COLORS['triangle_obstacle'])
         )
         marker_id += 1
 

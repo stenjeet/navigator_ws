@@ -3,7 +3,8 @@
 Пошаговая инструкция: от чистой Windows до работающей симуляции.
 Проект — папка `navigator_ws` (внутри `src/` шесть пакетов: `navigator_description`,
 `navigator_sim`, `navigator_bringup`, `navigator_localization`, `navigator_slam`,
-`navigator_interfaces`).
+`navigator_interfaces`). Соответствие девяти этапам задания, команды проверки и
+легенда цветов: [`docs/assignment-implementation.md`](docs/assignment-implementation.md).
 
 > Соответствие версий: **Ubuntu 24.04 → ROS 2 Jazzy**. ROS 2 Humble ставится только
 > на Ubuntu 22.04, поэтому здесь он не используется.
@@ -177,7 +178,7 @@ cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
 ros2 pkg list | grep navigator             # 6 пакетов
-ros2 node list                              # 6 без EKF, 7 с EKF, 9 с картами, 10 со SLAM
+ros2 node list                              # 6 без EKF; 7 с EKF; 8 с landmark_node; 8 со SLAM; 9 с двумя картографами (+1 с RViz)
 ros2 topic list                             # список топиков
 ros2 topic hz /scan_ideal                   # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges             # ~10 Гц
@@ -194,9 +195,11 @@ ros2 topic echo --once /slam/landmarks       # карта ориентиров E
 ros2 topic echo --once /slam/error           # ошибка SLAM vs истина
 ```
 
-Ожидаемо: 6 узлов без EKF (7 с `use_localization:=true`), все топики из
-`README.md`, частоты ~10 Гц, TF движется по квадрату 4 × 4 м со скоростью
-0.35 м/с; `/estimate/odom` — ~20 Гц.
+Ожидаемо: 6 узлов без EKF, 7 с `use_localization:=true`, 8 с
+`landmark_node`, 8 со SLAM (`slam.launch.py`) и 9 с `pose_source:=both`
+(с RViz на один узел больше); все топики из `README.md`, частоты ~10 Гц,
+TF движется по квадрату 4 × 4 м со скоростью 0.35 м/с; `/estimate/odom` —
+~20 Гц.
 
 ### Проверка EKF (этап 5)
 
@@ -275,7 +278,7 @@ cd ~/navigator_ws
 ```bash
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
-colcon test --packages-select navigator_slam && colcon test-result --verbose   # 175 тестов
+colcon test --packages-select navigator_slam && colcon test-result --verbose   # 177 тестов
 ```
 
 Запуск: `landmarks.launch.py` поднимает симуляцию + EKF + `landmark_node`

@@ -102,7 +102,8 @@ def associate_observations(observations, robot_pose, landmarks, pose_covariance,
   (adaptive: angular step plus a metric threshold), fits a circle per cluster
   (algebraic least squares), rejects clusters outside `min_points..max_points`,
   radius outside `radius_min..radius_max` and with a fit residual above
-  `max_residual`; falls back to the cluster centroid when the fit is rejected.
+  `max_residual`; short arcs use the chord/sagitta arc fit, and a cluster is
+  rejected if that fit also fails the radius/residual limits.
   Points farther than `max_range` and non-finite ranges are skipped.
 - `associate_observations` predicts each known landmark in the robot frame,
   forms the innovation covariance `H P_pose H^T + R` and associates greedily by
@@ -119,9 +120,11 @@ def associate_observations(observations, robot_pose, landmarks, pose_covariance,
   scan; when a pose is available also `/landmarks/map` (`LandmarkMap`) and
   `/landmarks/markers` (`visualization_msgs/MarkerArray`, spheres + id labels)
   at `publish_rate_hz`;
-- keeps a simple landmark map: new id on first observation, exponential moving
-  average of position with a running covariance per id; params
-  `max_landmarks`, `gate`, `map_alpha`;
+- keeps a simple landmark map: a candidate gets an id after `min_hits`
+  consistent sightings within `tentative_gate` (post-integration refinement),
+  then its position is an exponential moving average with a running covariance
+  per id; params `max_landmarks`, `gate`, `map_alpha`, `min_hits`,
+  `tentative_gate`;
 - parameters as in `landmarks.yaml` (scan/pose/observation/map/marker topics,
   detection params, association gate, `publish_rate_hz`, `frame_id`).
 
@@ -157,7 +160,7 @@ src/navigator_bringup/launch/slam.launch.py
   `h = [d, wrap(atan2(dy, dx) - theta)]`, analytic Jacobians for the robot block
   and the associated landmark block, Joseph form for the covariance.
 - `add_landmark(observation, R)`: inverse observation model, initial position
-  from the robot pose, covariance from `G Sigma G^T + G R G^T` with the landmark
+  from the robot pose, covariance from `G Sigma G^T + M R M^T` with the landmark
   rows filled.
 - `associate(observations, gate)`: implemented inside `ekf_slam.py` over the
   **joint** covariance (robot and landmark blocks including their
@@ -232,7 +235,7 @@ Allowed changes to existing files, strictly backwards compatible:
   `results/analysis_rmse.png` (RMSE vs scenario, log scale for sigma) and
   `results/analysis_maps.png` (IoU/distance per scenario); `--replot` renders
   from the saved CSV/NPZ without running the simulation;
-- `--quick` selects a short subset (baseline + 2 sigma values + 1 dropout, 30 s),
+- `--quick` selects a short subset (baseline + sigma 0.10 + dropout 0.25, 30 s),
   the default profile runs the full table at 62 s per scenario.
 
 `run_analysis.sh` mirrors `run_map_compare.sh`: sources ROS, checks `install/`,
