@@ -170,6 +170,9 @@ ros2 run tf2_ros tf2_echo map base_footprint
 **Команды проверки**
 
 ```bash
+# если пакет не установлен вместе с desktop:
+sudo apt install -y ros-jazzy-joint-state-publisher
+
 ros2 launch navigator_bringup display.launch.py
 ros2 topic echo --once --qos-durability transient_local /robot_description | head
 ros2 topic echo --once /polygon_markers | head

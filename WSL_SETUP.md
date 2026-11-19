@@ -55,8 +55,9 @@ sudo dpkg -i /tmp/ros2-apt-source.deb
 
 sudo apt update && sudo apt upgrade -y
 
-# ROS 2 Jazzy Desktop (включает RViz2) + инструменты сборки
-sudo apt install -y ros-jazzy-desktop ros-dev-tools
+# ROS 2 Jazzy Desktop (включает RViz2) + инструменты сборки.
+# joint_state_publisher нужен для display.launch.py (статичный показ робота).
+sudo apt install -y ros-jazzy-desktop ros-dev-tools ros-jazzy-joint-state-publisher
 
 echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
 source ~/.bashrc
@@ -337,6 +338,7 @@ python3 tools/visualize.py --replot
 | `ros2: command not found` | не подключены `source /opt/ros/jazzy/setup.bash` и `source install/setup.bash` |
 | `ros2 topic echo`: «The message type `navigator_interfaces/msg/...` is invalid» | в терминале подключён только системный ROS: выполните `source install/setup.bash` (иначе Python-модули своих сообщений не видны), и проверяйте топик при работающем запуске |
 | `E: Unable to locate package ros-jazzy-desktop` | не выполнен `apt update` после репозитория или Ubuntu не 24.04 |
+| `package 'joint_state_publisher' not found` при `display.launch.py` | пакет не входит в минимальный desktop: `sudo apt install -y ros-jazzy-joint-state-publisher` |
 | Сборка долгая / ошибки прав | проект в `/mnt/c` — скопировать в `~` (раздел 3) |
 | `colcon build` ведёт себя странно | запускать из корня `~/navigator_ws`, не из `src` |
 | RViz не открывается (Windows 10) | WSLg нет: установить VcXsrv/Xming и задать `export DISPLAY=$(ip route show default \| awk '{print $3}'):0.0` |

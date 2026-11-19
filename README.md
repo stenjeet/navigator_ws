@@ -88,7 +88,7 @@ navigator_ws/
 
 ## Требования
 
-- Ubuntu 24.04 + ROS 2 Jazzy: `ros-jazzy-desktop` (включает RViz2), `ros-dev-tools` (colcon).
+- Ubuntu 24.04 + ROS 2 Jazzy: `ros-jazzy-desktop` (включает RViz2), `ros-dev-tools` (colcon), `ros-jazzy-joint-state-publisher` (для `display.launch.py`).
 - Только для рисунков: `python3-numpy`, `python3-matplotlib`.
 
 ## Сборка (один раз)
