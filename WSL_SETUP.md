@@ -332,6 +332,7 @@ python3 tools/visualize.py --replot
 | Симптом | Причина / решение |
 |---|---|
 | `ros2: command not found` | не подключены `source /opt/ros/jazzy/setup.bash` и `source install/setup.bash` |
+| `ros2 topic echo`: «The message type `navigator_interfaces/msg/...` is invalid» | в терминале подключён только системный ROS: выполните `source install/setup.bash` (иначе Python-модули своих сообщений не видны), и проверяйте топик при работающем запуске |
 | `E: Unable to locate package ros-jazzy-desktop` | не выполнен `apt update` после репозитория или Ubuntu не 24.04 |
 | Сборка долгая / ошибки прав | проект в `/mnt/c` — скопировать в `~` (раздел 3) |
 | `colcon build` ведёт себя странно | запускать из корня `~/navigator_ws`, не из `src` |

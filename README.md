@@ -544,6 +544,7 @@ import -window root rviz.png
 | `Package 'navigator_bringup' not found` | workspace не собран или не подключён `install/setup.bash` |
 | `/map/estimate` отсутствует | не запущен `mapping.launch.py` (`pose_source:=estimate`/`both`) или ещё нет `/estimate/odom` |
 | `map_compare.py`: «no map on …» | маппер запущен без `pose_source:=both` |
+| `ros2 topic echo` пишет «message type … is invalid» | в этом терминале не подключён workspace: `source install/setup.bash` (типы `navigator_interfaces` видны только оттуда) |
 | `/landmarks/observations` молчит | `landmark_node` не запущен (`landmarks.launch.py`/`slam.launch.py`) или в скане нет ориентиров |
 | `/slam/odom` отсутствует | не запущен `slam.launch.py`; SLAM не использует `/estimate/odom` |
 | `analysis.py`: «no /estimate/error» | EKF не стартовал: сценарий не дождался записи, смотрите `--startup-timeout` |
