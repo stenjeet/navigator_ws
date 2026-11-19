@@ -1,8 +1,9 @@
 # Запуск проекта в Windows 11 + WSL 2 (Ubuntu 24.04, ROS 2 Jazzy)
 
 Пошаговая инструкция: от чистой Windows до работающей симуляции.
-Проект — папка `navigator_ws` (внутри `src/` пять пакетов: `navigator_description`,
-`navigator_sim`, `navigator_bringup`, `navigator_localization`, `navigator_slam`).
+Проект — папка `navigator_ws` (внутри `src/` шесть пакетов: `navigator_description`,
+`navigator_sim`, `navigator_bringup`, `navigator_localization`, `navigator_slam`,
+`navigator_interfaces`).
 
 > Соответствие версий: **Ubuntu 24.04 → ROS 2 Jazzy**. ROS 2 Humble ставится только
 > на Ubuntu 22.04, поэтому здесь он не используется.
@@ -106,8 +107,9 @@ source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install
 ```
 
-Ожидаемо: `Summary: 5 packages finished` (`navigator_description`, `navigator_sim`,
-`navigator_bringup`, `navigator_localization`, `navigator_slam`).
+Ожидаемо: `Summary: 6 packages finished` (`navigator_description`, `navigator_sim`,
+`navigator_bringup`, `navigator_localization`, `navigator_slam`,
+`navigator_interfaces`).
 
 ---
 
@@ -156,6 +158,14 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=ground_truth
 ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 ```
 
+Этап 7 — выделение ориентиров (поза из EKF) и этап 8 — EKF-SLAM:
+
+```bash
+ros2 launch navigator_bringup landmarks.launch.py     # ориентиры + карта трекера (поза EKF)
+ros2 launch navigator_bringup landmarks.launch.py pose_topic:=/ground_truth/odom  # только детектор
+ros2 launch navigator_bringup slam.launch.py          # совместный EKF-SLAM
+```
+
 Остановить — `Ctrl+C`.
 
 ---
@@ -166,8 +176,8 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 cd ~/navigator_ws
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 
-ros2 pkg list | grep navigator             # 5 пакетов
-ros2 node list                              # 6 узлов без EKF, 7 с EKF, 9 с картами
+ros2 pkg list | grep navigator             # 6 пакетов
+ros2 node list                              # 6 без EKF, 7 с EKF, 9 с картами, 10 со SLAM
 ros2 topic list                             # список топиков
 ros2 topic hz /scan_ideal                   # ~10 Гц
 ros2 topic hz /uwb/noisy_ranges             # ~10 Гц
@@ -178,6 +188,10 @@ ros2 topic hz /estimate/odom                # ~20 Гц (если EKF включ�
 ros2 topic echo --once /estimate/error      # ошибка оценки (этап 5)
 ros2 topic hz /map/estimate                 # ~1 Гц (этап 6, если запущен маппер)
 ros2 topic echo --once /map/estimate         # OccupancyGrid: -1/0/100
+ros2 topic hz /landmarks/observations        # ~10 Гц (этап 7)
+ros2 topic hz /slam/odom                     # ~20 Гц (этап 8)
+ros2 topic echo --once /slam/landmarks       # карта ориентиров EKF-SLAM
+ros2 topic echo --once /slam/error           # ошибка SLAM vs истина
 ```
 
 Ожидаемо: 6 узлов без EKF (7 с `use_localization:=true`), все топики из
@@ -256,6 +270,42 @@ cd ~/navigator_ws
 оценке и карта различий) плюс IoU занятых ячеек и доля совпавших ячеек в консоли.
 Повторная отрисовка: `python3 tools/map_compare.py --replot`.
 
+### Проверка ориентиров и EKF-SLAM (этапы 7-8)
+
+```bash
+cd ~/navigator_ws
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+colcon test --packages-select navigator_slam && colcon test-result --verbose   # 175 тестов
+```
+
+Запуск: `landmarks.launch.py` поднимает симуляцию + EKF + `landmark_node`
+(`/landmarks/observations`, `/landmarks/map`, `/landmarks/markers`);
+`slam.launch.py` — симуляцию без EKF, `landmark_node` с пустым `pose_topic`
+(только наблюдения) и `ekf_slam_node` (`/slam/odom`, `/slam/path`,
+`/slam/landmarks`, `/slam/markers`, `/slam/error`). В логе `ekf_slam_node`
+раз в секунду печатается RMSE позы относительно истины.
+
+Проверки:
+
+```bash
+ros2 topic echo --once /landmarks/observations   # 1-4 ориентира, base_footprint
+ros2 topic echo --once /slam/landmarks           # 4 ориентира с id и ковариацией
+ros2 topic echo --once /slam/error               # x, y, yaw vs /ground_truth/odom
+```
+
+### Проверка анализа эффективности (этап 9)
+
+```bash
+cd ~/navigator_ws
+./run_analysis.sh --quick      # 3 сценария по 30 с (~3 мин)
+./run_analysis.sh              # 10 сценариев по 62 с (~13 мин)
+```
+
+Результаты: `results/analysis/summary.md` (таблица + выводы),
+`results/analysis/summary.csv`, `results/analysis_rmse.png`,
+`results/analysis_maps.png`. Повторная отрисовка:
+`python3 tools/analysis.py --replot`.
+
 ---
 
 ## 7. Картинки для отчёта (опционально)
@@ -282,6 +332,7 @@ python3 tools/visualize.py --replot
 | Симптом | Причина / решение |
 |---|---|
 | `ros2: command not found` | не подключены `source /opt/ros/jazzy/setup.bash` и `source install/setup.bash` |
+| `ros2 topic echo`: «The message type `navigator_interfaces/msg/...` is invalid» | в терминале подключён только системный ROS: выполните `source install/setup.bash` (иначе Python-модули своих сообщений не видны), и проверяйте топик при работающем запуске |
 | `E: Unable to locate package ros-jazzy-desktop` | не выполнен `apt update` после репозитория или Ubuntu не 24.04 |
 | Сборка долгая / ошибки прав | проект в `/mnt/c` — скопировать в `~` (раздел 3) |
 | `colcon build` ведёт себя странно | запускать из корня `~/navigator_ws`, не из `src` |
@@ -294,3 +345,8 @@ python3 tools/visualize.py --replot
 | EKF не стартует | по умолчанию `use_localization:=false`; используйте `localization.launch.py` или `use_localization:=true` |
 | `/map/estimate` пустой или отсутствует | маппер не запущен или поза не найдена: `mapping.launch.py` (`pose_source:=estimate`/`both`) и непустой `/estimate/odom` |
 | В `map_compare.py` «no map on ...» | запущен `mapping.launch.py` без `pose_source:=both` |
+| `/landmarks/observations` молчит | не запущен `landmark_node` (`landmarks.launch.py` / `slam.launch.py`) или в поле зрения нет ориентиров |
+| `/slam/odom` отсутствует | не запущен `slam.launch.py`; EKF-локализация этапа 5 для SLAM не нужна |
+| `analysis.py` падает на старте сценария | EKF не успел опубликовать `/estimate/error` — увеличьте `--startup-timeout` |
+| «sensor параметры не применились» | проверьте секции `sensors.yaml`: имя секции должно совпадать с именем ноды (`uwb_model_node`, `lidar_model_node`) |
+| `uwb_model_node` падает с `ParameterUninitializedException: anchors` | в YAML стоит `anchors: []`; ROS не выводит тип пустого массива — уберите ключ (будут якоря полигона) или задайте все тройки `x, y, z` |

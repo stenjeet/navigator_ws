@@ -12,6 +12,11 @@ __pycache__/
 
 # Rendered data cache
 navigator_ws/results/plot_data.npz
+results/plot_data.npz
+results/localization_data.npz
+results/map_compare_data.npz
+results/analysis/analysis_data.npz
+results/analysis/configs/
 
 # Scratch and local files
 .tmp/
