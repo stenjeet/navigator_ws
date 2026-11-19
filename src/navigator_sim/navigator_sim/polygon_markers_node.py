@@ -137,7 +137,7 @@ class PolygonMarkersNode(Node):
             )
             marker_id += 1
 
-        # L-shaped wall (box obstacles)
+        # Z-shaped wall (box obstacles)
         obstacle_color = world.COLORS['box_obstacle']
         for (xmin, xmax, ymin, ymax, height) in world.BOX_OBSTACLES:
             cx = 0.5 * (xmin + xmax)

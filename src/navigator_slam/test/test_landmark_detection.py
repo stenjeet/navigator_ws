@@ -404,7 +404,7 @@ class TestAgainstPolygonGeometry(unittest.TestCase):
                 )
             for xmin, xmax, ymin, ymax in boxes:
                 inside = xmin <= map_x <= xmax and ymin <= map_y <= ymax
-                self.assertFalse(inside, 'L-wall reported at (%.2f, %.2f)'
+                self.assertFalse(inside, 'box wall reported at (%.2f, %.2f)'
                                  % (map_x, map_y))
             for index in range(3):
                 x1, y1 = triangle[index]

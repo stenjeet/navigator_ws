@@ -16,7 +16,7 @@ All 2D rectangles are stored as (x_min, x_max, y_min, y_max) [m].
 COLORS = {
     'floor': (0.90, 0.91, 0.93),             # light grey
     'walls': (0.24, 0.26, 0.30),             # graphite
-    'box_obstacle': (0.15, 0.38, 0.78),      # blue L-wall
+    'box_obstacle': (0.15, 0.38, 0.78),      # blue Z-wall
     'cylinder_obstacle': (0.95, 0.45, 0.08),  # orange cylinders
     'triangle_obstacle': (0.08, 0.65, 0.60),  # teal prism
     'uwb_anchor': (1.00, 0.55, 0.00),        # amber anchors
@@ -38,24 +38,27 @@ WALLS = [
 ]
 
 # --------------------------------------------------------------------------
-# Internal axis-aligned obstacles (blue L-shaped wall, north-west quadrant).
-# Horizontal part: 2.00 x 0.22 x 0.70 at y = 4.55..4.77,
-# vertical part:   0.22 x 1.97 x 0.70 at x = 2.20..2.42.
-# The L opens towards the south-east; every edge stays >= 0.70 m from the path.
+# Internal axis-aligned obstacles (blue Z-shaped wall, centre-west).
+# Lower arm: 1.40 x 0.22 x 0.70 at y = 2.80..3.02,
+# riser:     0.22 x 1.80 x 0.70 at x = 3.38..3.60,
+# upper arm: 0.77 x 0.22 x 0.70 at y = 4.38..4.60.
+# The three boxes overlap at the corners on purpose, so the wall is solid.
+# Every edge stays >= 0.45 m from the path.
 # --------------------------------------------------------------------------
 BOX_OBSTACLES = [
-    (2.20, 4.20, 4.55, 4.77, 0.70),   # L-wall, horizontal part
-    (2.20, 2.42, 2.80, 4.77, 0.70),   # L-wall, vertical part
+    (2.20, 3.60, 2.80, 3.02, 0.70),   # lower arm
+    (3.38, 3.60, 2.80, 4.60, 0.70),   # riser
+    (3.38, 4.15, 4.38, 4.60, 0.70),   # upper arm
 ]
 
 # --------------------------------------------------------------------------
 # Cylindrical obstacles: (x, y, radius, height) [m].
-# One in the south-east outer corridor, one in the north-west outer corridor;
-# both leave >= 0.48 m to the trajectory and keep all landmarks visible.
+# Both sit in the east outer corridor, clear of the UWB anchor markers
+# (centre distance > radius + 0.12 m) and of the trajectory.
 # --------------------------------------------------------------------------
 CYLINDER_OBSTACLES = [
-    (6.55, 2.30, 0.30, 0.60),   # cylinder 1, east corridor
-    (0.60, 6.55, 0.42, 0.85),   # cylinder 2, west/north corridor
+    (6.55, 2.30, 0.30, 0.60),   # cylinder 1, south-east
+    (6.60, 6.60, 0.42, 0.85),   # cylinder 2, north-east
 ]
 
 # --------------------------------------------------------------------------
