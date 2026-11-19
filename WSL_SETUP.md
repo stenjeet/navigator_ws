@@ -161,7 +161,8 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 Этап 7 — выделение ориентиров (поза из EKF) и этап 8 — EKF-SLAM:
 
 ```bash
-ros2 launch navigator_bringup landmarks.launch.py     # ориентиры + карта трекера
+ros2 launch navigator_bringup landmarks.launch.py     # ориентиры + карта трекера (поза EKF)
+ros2 launch navigator_bringup landmarks.launch.py pose_topic:=/ground_truth/odom  # только детектор
 ros2 launch navigator_bringup slam.launch.py          # совместный EKF-SLAM
 ```
 

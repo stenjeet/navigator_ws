@@ -471,6 +471,22 @@ class TestSummaryRendering(TempDirMixin, unittest.TestCase):
         self.assertIn('n/a', markdown)
         self.assert_no_nan_text(markdown)
 
+    def test_console_row_line_uses_only_available_metrics(self):
+        row = make_row('baseline')
+        line = ANALYSIS.format_row_line(row)
+        self.assertIn('RMSE pos 0.100 m', line)
+        self.assertIn('map IoU 0.400', line)
+        self.assertIn('samples 600', line)
+        self.assertNotIn('n/a', line)
+        self.assertNotIn('SLAM', line)
+
+        broken = make_row('broken', rmse_pos=float('nan'))
+        broken['status'] = 'failed'
+        broken['error'] = 'launch failed'
+        self.assertEqual(
+            ANALYSIS.format_row_line(broken), 'no data (launch failed)'
+        )
+
     def test_csv_round_trip(self):
         rows = synthetic_rows()
         rows.append(make_row('without_map', iou=float('nan')))

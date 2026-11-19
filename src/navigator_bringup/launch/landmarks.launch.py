@@ -17,6 +17,11 @@ def generate_launch_description():
     The simulation runs with the stage-5 EKF localization node, so the landmark
     node gets a pose on ``/estimate/odom`` and can build the landmark map next
     to the raw observations. Pass ``use_rviz:=false`` for a headless run.
+
+    ``pose_topic`` selects the pose used for the map. The estimate is the
+    realistic case (map accuracy then depends on localization accuracy); the
+    ground truth ``/ground_truth/odom`` isolates the detector and the data
+    association, which is useful for the report.
     """
     bringup_share = get_package_share_directory('navigator_bringup')
     slam_share = get_package_share_directory('navigator_slam')
@@ -27,11 +32,16 @@ def generate_launch_description():
     landmarks_yaml = os.path.join(slam_share, 'config', 'landmarks.yaml')
 
     use_rviz = LaunchConfiguration('use_rviz')
+    pose_topic = LaunchConfiguration('pose_topic')
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_rviz', default_value='true',
             description='Start RViz2 (set false for headless runs).'),
+        DeclareLaunchArgument(
+            'pose_topic', default_value='/estimate/odom',
+            description='Pose used for the landmark map: /estimate/odom '
+                        '(EKF) or /ground_truth/odom.'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(simulation),
             launch_arguments={
@@ -43,7 +53,7 @@ def generate_launch_description():
             package='navigator_slam',
             executable='landmark_node',
             name='landmark_node',
-            parameters=[landmarks_yaml],
+            parameters=[landmarks_yaml, {'pose_topic': pose_topic}],
             output='screen',
         ),
     ])

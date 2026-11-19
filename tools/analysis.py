@@ -833,7 +833,7 @@ def format_row_line(row):
     """Compact console line for one finished scenario."""
     line = (
         'RMSE pos %s m (x %s, y %s, yaw %s deg), samples %s; '
-        'map IoU %s, mean distance %s m; SLAM RMSE pos %s m'
+        'map IoU %s, mean distance %s m'
         % (
             format_value(row.get('rmse_pos')),
             format_value(row.get('rmse_x')),
@@ -874,8 +874,8 @@ SUMMARY_NOTES = (
     '`IoU occupied` compares the occupied cells of the final '
     '`/map/ground_truth` and `/map/estimate` grids and `Mean dist` is the mean '
     'distance from an occupied cell of one map to the nearest occupied cell of '
-    'the other. `n/a` marks a scenario without data, for example the SLAM '
-    'column when stage 8 is not part of the workspace.'
+    'the other. `n/a` marks a scenario without data, for example when a '
+    'message stream never arrived during the run.'
 )
 
 

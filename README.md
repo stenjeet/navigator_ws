@@ -149,6 +149,9 @@ ros2 launch navigator_bringup mapping.launch.py pose_source:=both
 ros2 launch navigator_bringup landmarks.launch.py
 # этап 8: EKF-SLAM (совместная оценка позы и карты ориентиров)
 ros2 launch navigator_bringup slam.launch.py
+
+# этап 7 с истинной позой — чистая проверка детектора и ассоциации
+ros2 launch navigator_bringup landmarks.launch.py pose_topic:=/ground_truth/odom
 ```
 
 У всех launch-файлов есть аргумент `use_rviz` (по умолчанию `true`);
