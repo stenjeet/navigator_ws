@@ -153,6 +153,7 @@ class LidarModelNode(Node):
         self.range_max = float(self.get_parameter('lidar_range_max').value)
         self.beams = int(self.get_parameter('lidar_beams').value)
         rate_hz = float(self.get_parameter('lidar_rate_hz').value)
+        self.scan_time = 1.0 / rate_hz
 
         self.rng = random.Random(seed)
         self.geometry = WorldGeometry()
@@ -236,8 +237,8 @@ class LidarModelNode(Node):
         scan.angle_min = self.angle_min
         scan.angle_max = self.angle_max
         scan.angle_increment = self.angle_increment
-        scan.time_increment = 0.0
-        scan.scan_time = 0.1
+        scan.time_increment = self.scan_time / self.beams
+        scan.scan_time = self.scan_time
         scan.range_min = self.range_min
         scan.range_max = self.range_max
         scan.ranges = [0.0] * self.beams

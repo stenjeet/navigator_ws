@@ -104,7 +104,7 @@
   <joint name="front_caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="front_caster_link"/>
-    <origin xyz="0.23 0 -0.05" rpy="0 0 0"/>
+    <origin xyz="0.23 0 0.045" rpy="0 0 0"/>
   </joint>
 
   <link name="rear_caster_link">
@@ -121,7 +121,7 @@
   <joint name="rear_caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="rear_caster_link"/>
-    <origin xyz="-0.23 0 -0.05" rpy="0 0 0"/>
+    <origin xyz="-0.23 0 0.045" rpy="0 0 0"/>
   </joint>
 
   <link name="lidar_link">
